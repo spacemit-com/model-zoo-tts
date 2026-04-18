@@ -7,6 +7,7 @@
 
 #include <filesystem>  // NOLINT(build/c++17)
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -172,7 +173,7 @@ void TextNormalizer::ensureZhLoaded() {
     TTSModelDownloader downloader;
     if (!downloader.ensureTextNormFiles("zh")) {
         std::cerr << "[TextNormalizer] Failed to ensure FST files for zh, "
-                     "falling back to identity normalization" << std::endl;
+            << "falling back to identity normalization" << std::endl;
         return;
     }
 
@@ -187,7 +188,7 @@ void TextNormalizer::ensureZhLoaded() {
     zh_fst_ = std::make_unique<FstNormalizer>();
     if (!zh_fst_->Load(paths)) {
         std::cerr << "[TextNormalizer] Failed to load FST files from " << dir
-                  << ", falling back to identity normalization" << std::endl;
+            << ", falling back to identity normalization" << std::endl;
         zh_fst_.reset();
     }
 }

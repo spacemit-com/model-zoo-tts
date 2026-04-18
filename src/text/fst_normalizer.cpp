@@ -5,6 +5,10 @@
 
 #include <exception>
 #include <iostream>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #ifdef TTS_USE_FST
 #include "kaldifst/csrc/text-normalizer.h"
@@ -41,12 +45,12 @@ bool FstNormalizer::Load(const std::vector<std::string>& paths) {
             impl_->normalizers.push_back(std::move(n));
         } catch (const std::exception& e) {
             std::cerr << "[FstNormalizer] Failed to load FST '" << path
-                      << "': " << e.what() << std::endl;
+                << "': " << e.what() << std::endl;
             impl_->normalizers.clear();
             return false;
         } catch (...) {
             std::cerr << "[FstNormalizer] Failed to load FST '" << path
-                      << "': unknown error" << std::endl;
+                << "': unknown error" << std::endl;
             impl_->normalizers.clear();
             return false;
         }
@@ -89,11 +93,11 @@ std::string FstNormalizer::Apply(const std::string& text) const {
         }
     } catch (const std::exception& e) {
         std::cerr << "[FstNormalizer] Apply failed: " << e.what()
-                  << ", returning original text" << std::endl;
+            << ", returning original text" << std::endl;
         return text;
     } catch (...) {
         std::cerr << "[FstNormalizer] Apply failed with unknown error, returning original text"
-                  << std::endl;
+            << std::endl;
         return text;
     }
     return out;

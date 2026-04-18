@@ -41,7 +41,7 @@ enum class Language {
 // =============================================================================
 
 class TextNormalizer {
- public:
+public:
     TextNormalizer();
     ~TextNormalizer();
 
@@ -60,7 +60,7 @@ class TextNormalizer {
     /// @brief 获取默认语言
     Language getDefaultLanguage() const { return default_lang_; }
 
- private:
+private:
     /// @brief 延迟加载中文 FST (首次 ZH/AUTO 调用时触发, 失败后不再重试)
     void ensureZhLoaded();
 

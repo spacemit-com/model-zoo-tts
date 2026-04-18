@@ -23,7 +23,7 @@ namespace tts {
 namespace text {
 
 class FstNormalizer {
- public:
+public:
     FstNormalizer();
     ~FstNormalizer();
 
@@ -37,7 +37,7 @@ class FstNormalizer {
     /// @brief 对输入文本依次应用所有规则。未加载/异常时原文返回。
     std::string Apply(const std::string& text) const;
 
- private:
+private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
     mutable std::mutex mu_;

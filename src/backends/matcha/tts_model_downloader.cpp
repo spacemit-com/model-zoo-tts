@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -310,7 +311,7 @@ bool TTSModelDownloader::ensureTextNormFiles(const std::string& language) {
         fs::create_directories(target_dir);
     } catch (const std::exception& e) {
         std::cerr << "[TextNormFiles] Failed to create directory " << target_dir
-                  << ": " << e.what() << std::endl;
+            << ": " << e.what() << std::endl;
         return false;
     }
 
