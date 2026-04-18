@@ -346,35 +346,8 @@ std::vector<int64_t> KokoroPhonemizer::textToTokenIds(const std::string& text) c
             continue;
         }
 
-        // --- Digit segment (treat as Chinese) ---
-        if (text::isDigit(ch)) {
-            std::string digit_segment;
-            while (i < chars.size() && (text::isDigit(chars[i]) || chars[i] == ".")) {
-                digit_segment += chars[i];
-                i++;
-            }
-
-            // Normalize digits as Chinese text, then process
-            std::string digit_normalized = text::normalizeText(digit_segment, text::Language::ZH);
-            if (text::containsChinese(digit_normalized)) {
-                Pinyin::PinyinResVector pinyin_result = pinyin_converter_->hanziToPinyin(
-                    digit_normalized,
-                    Pinyin::ManTone::Style::TONE3,
-                    Pinyin::Error::Default,
-                    false, false, true);
-                for (const auto& res : pinyin_result) {
-                    if (!res.error) {
-                        std::string ipa = pinyinToIPA(res.pinyin);
-                        if (!ipa.empty()) {
-                            combined_ipa += ipa;
-                        }
-                    }
-                }
-            }
-            continue;
-        }
-
         // --- Punctuation / other characters ---
+        // 注: 数字在 step 1 (line 287) 已由 FST 转为中文字符, 这里不再需要数字分支。
         std::string mapped = text::mapChinesePunctToAscii(ch);
         if (mapped.empty()) mapped = ch;
 

@@ -39,6 +39,11 @@ public:
     // Ensure models for specific language exist, download if necessary
     bool ensureModelsExist(const std::string& language);
 
+    // Ensure FST-based text normalization rule files exist
+    // language: "zh" currently supported (English uses espeak-ng's built-in TN)
+    // Files land under ~/.cache/models/tts/text_norm/v1/<lang>/
+    bool ensureTextNormFiles(const std::string& language);
+
     // Ensure cppjieba is cloned to ~/.cache/thirdparty/cppjieba
     bool ensureCppJieba();
 
