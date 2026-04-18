@@ -15,6 +15,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # =============================================================================
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/cppjieba.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/cpp_pinyin.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/kaldifst.cmake)
 
 # =============================================================================
 # TTS Library
@@ -27,6 +28,7 @@ set(TTS_SOURCES
     src/audio/audio_processor.cpp
     src/text/text_utils.cpp
     src/text/number_utils.cpp
+    src/text/fst_normalizer.cpp
     src/text/text_normalizer.cpp
     src/text/token_utils.cpp
     src/text/phoneme_utils.cpp
@@ -191,6 +193,13 @@ target_include_directories(tts PRIVATE
     ${CPPJIEBA_DIR}/include
     ${CPPJIEBA_DIR}/deps/limonp/include
 )
+
+# kaldifst (FST 文本规范化)
+if(TTS_USE_FST)
+    target_include_directories(tts PRIVATE ${KALDIFST_INCLUDE_DIRS})
+    target_link_libraries(tts PRIVATE kaldifst_core)
+    target_compile_definitions(tts PRIVATE TTS_USE_FST)
+endif()
 
 # cpp-pinyin include
 target_include_directories(tts PRIVATE

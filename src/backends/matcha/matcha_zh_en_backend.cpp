@@ -115,6 +115,14 @@ std::vector<int64_t> MatchaZhEnBackend::processZhEnText(const std::string& text)
     const auto& token_to_id = getTokenToIdMap();
     std::vector<std::string> chars = text::splitUtf8(text);
 
+    // 段级语言判定: 整段无中文字符时交给 espeak-ng, 避免数字被 processArabicNumeralToIds 强行读中文。
+    // 匹配 kokoro_phonemizer.cpp:287 的先规范化再分段模式, 与业界段级路由共识一致。
+    bool has_chinese = std::any_of(chars.begin(), chars.end(),
+        [](const std::string& c) { return text::isChineseChar(c); });
+    if (!has_chinese) {
+        return processEnglishToIds(text);
+    }
+
     size_t i = 0;
     while (i < chars.size()) {
         if (text::isChineseChar(chars[i])) {

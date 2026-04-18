@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -295,6 +296,46 @@ bool TTSModelDownloader::gitClone(const std::string& repo_url, const std::string
     }
 
     std::cout << "Repository cloned successfully!" << std::endl;
+    return true;
+}
+
+bool TTSModelDownloader::ensureTextNormFiles(const std::string& language) {
+    // 目前仅中文有配套 FST; 英文走 espeak-ng 内置 TN, 不需要额外文件。
+    if (language != "zh") {
+        return false;
+    }
+
+    // 目录: ~/.cache/models/tts/text_norm/v1/zh/
+    std::string target_dir = base_cache_dir_ + "models/tts/text_norm/v1/zh/";
+    try {
+        fs::create_directories(target_dir);
+    } catch (const std::exception& e) {
+        std::cerr << "[TextNormFiles] Failed to create directory " << target_dir
+            << ": " << e.what() << std::endl;
+        return false;
+    }
+
+    // 源: archive.spacemit.com/spacemit-ai/model_zoo/tts/text_norm/v1/zh/
+    static constexpr const char* kBaseUrl =
+        "https://archive.spacemit.com/spacemit-ai/model_zoo/tts/text_norm/v1/zh/";
+
+    // date.fst / phone.fst / number.fst 是必需的, new_heteronym.fst 可选
+    const std::vector<std::string> required = {"date.fst", "phone.fst", "number.fst"};
+
+    for (const auto& name : required) {
+        std::string dest = target_dir + name;
+        if (fs::exists(dest) && fs::file_size(dest) > 0) {
+            continue;
+        }
+        std::string url = kBaseUrl + name;
+        std::cout << "[TextNormFiles] Downloading " << url << " ..." << std::endl;
+        if (!downloadFile(url, dest)) {
+            std::cerr << "[TextNormFiles] Failed to download " << name << std::endl;
+            // 清掉可能的半截文件
+            if (fs::exists(dest)) fs::remove(dest);
+            return false;
+        }
+    }
     return true;
 }
 
