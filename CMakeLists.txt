@@ -252,6 +252,14 @@ install(TARGETS tts
     LIBRARY DESTINATION lib
 )
 
+# kaldifst 通过 add_subdirectory(... EXCLUDE_FROM_ALL) 引入, 其自带的 install 规则被屏蔽。
+# 由于 libtts.a (fst_normalizer.cpp.o) PUBLIC-需要 kaldifst_core 的符号, 下游消费者
+# (如 application/native/omni_agent/voice_chat) 必须能链到 kaldifst_core + kaldifst_fst。
+# OpenFst 只开启了 HAVE_SCRIPT, 产物仅一个 libkaldifst_fst.a (OUTPUT_NAME 被重命名过)。
+if(TTS_USE_FST AND TARGET kaldifst_core AND TARGET fst)
+    install(TARGETS kaldifst_core fst ARCHIVE DESTINATION lib)
+endif()
+
 # =============================================================================
 # Demo 可执行程序
 # =============================================================================
