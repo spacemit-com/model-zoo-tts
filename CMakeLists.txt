@@ -268,9 +268,10 @@ endif()
 #
 option(BUILD_SIMPLE_DEMO "Build TTS file/simple demo" ON)
 
-# 检测是否在 SDK 仓库中编译
-set(_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
-if(EXISTS "${_SDK_ROOT}/build/envsetup.sh")
+# 检测是否在 SDK build 流程内编译（envsetup.sh 已 source 则 SROBOTIS_OUTPUT_ROOT 被 export）。
+# 仅文件存在不算——源码可能在仓库里，但用户裸 cmake 时 audio 组件并不一定已装，
+# 此时不应默认打开 BUILD_STREAM_DEMO。
+if(DEFINED ENV{SROBOTIS_OUTPUT_ROOT} AND NOT "$ENV{SROBOTIS_OUTPUT_ROOT}" STREQUAL "")
     set(_IN_SDK_BUILD ON)
 else()
     set(_IN_SDK_BUILD OFF)
@@ -404,8 +405,71 @@ if(BUILD_PYTHON_BINDINGS)
             DEPENDS _spacemit_tts
             COMMENT "Installing spacemit_tts to ${PYTHON_SITE_PACKAGES}/spacemit_tts/"
         )
+
+        # ---- wheel 自动构建与 install（对接 SDK 顶层产物）----
+        set(TTS_WHEEL_BUILD_ROOT      "${CMAKE_BINARY_DIR}/python_wheel")
+        set(TTS_WHEEL_OUTPUT_DIR      "${TTS_WHEEL_BUILD_ROOT}/dist")
+        set(TTS_WHEEL_CMAKE_BUILD_DIR "${TTS_WHEEL_BUILD_ROOT}/cmake")
+        set(TTS_WHEEL_SOURCE_DIR      "${TTS_WHEEL_BUILD_ROOT}/src")
+        set(TTS_WHEEL_STAMP           "${TTS_WHEEL_BUILD_ROOT}/wheel.stamp")
+
+        if(DEFINED ENV{SROBOTIS_OUTPUT_ROOT} AND NOT "$ENV{SROBOTIS_OUTPUT_ROOT}" STREQUAL "")
+            set(TTS_DIST_INSTALL_DIR "$ENV{SROBOTIS_OUTPUT_ROOT}/dist")
+        else()
+            set(TTS_DIST_INSTALL_DIR "${CMAKE_BINARY_DIR}/dist")
+        endif()
+
+        file(MAKE_DIRECTORY "${TTS_WHEEL_OUTPUT_DIR}")
+
+        add_custom_command(
+            OUTPUT  ${TTS_WHEEL_STAMP}
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${TTS_WHEEL_OUTPUT_DIR}
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${TTS_WHEEL_SOURCE_DIR}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${TTS_WHEEL_OUTPUT_DIR}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${TTS_WHEEL_CMAKE_BUILD_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    ${CMAKE_CURRENT_SOURCE_DIR}/python ${TTS_WHEEL_SOURCE_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${CMAKE_CURRENT_SOURCE_DIR}/README.md ${TTS_WHEEL_SOURCE_DIR}/README.md
+            COMMAND ${CMAKE_COMMAND} -E chdir ${TTS_WHEEL_SOURCE_DIR}
+                    ${CMAKE_COMMAND} -E env
+                    SPACEMIT_PREBUILT_EXTENSION=$<TARGET_FILE:_spacemit_tts>
+                    SPACEMIT_CMAKE_BUILD_DIR=${TTS_WHEEL_CMAKE_BUILD_DIR}
+                    ${Python3_EXECUTABLE} -m pip wheel . --no-deps --wheel-dir ${TTS_WHEEL_OUTPUT_DIR}
+            COMMAND ${CMAKE_COMMAND} -E touch ${TTS_WHEEL_STAMP}
+            DEPENDS
+                _spacemit_tts
+                ${CMAKE_CURRENT_SOURCE_DIR}/README.md
+                ${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py
+                ${CMAKE_CURRENT_SOURCE_DIR}/python/pyproject.toml
+                ${CMAKE_CURRENT_SOURCE_DIR}/python/spacemit_tts/__init__.py
+            VERBATIM
+            COMMENT "Building spacemit_tts wheel into ${TTS_WHEEL_OUTPUT_DIR}"
+        )
+
+        add_custom_target(tts-python-wheel ALL DEPENDS ${TTS_WHEEL_STAMP})
+
+        install(
+            DIRECTORY ${TTS_WHEEL_OUTPUT_DIR}/
+            DESTINATION ${TTS_DIST_INSTALL_DIR}
+            FILES_MATCHING PATTERN "*.whl"
+        )
     else()
         message(STATUS "[tts] Python bindings disabled (pybind11 not found)")
         message(STATUS "  Install pybind11: pip install pybind11")
     endif()
 endif()
+
+# =============================================================================
+# Summary
+# =============================================================================
+message(STATUS "")
+message(STATUS "=== TTS Build Configuration ===")
+message(STATUS "  BUILD_SIMPLE_DEMO:      ${BUILD_SIMPLE_DEMO}")
+message(STATUS "  BUILD_STREAM_DEMO:      ${BUILD_STREAM_DEMO}")
+message(STATUS "  BUILD_PYTHON_BINDINGS:  ${BUILD_PYTHON_BINDINGS}")
+if(BUILD_PYTHON_BINDINGS AND pybind11_FOUND)
+    message(STATUS "  Wheel output:           ${TTS_WHEEL_OUTPUT_DIR}")
+    message(STATUS "  Wheel install dir:      ${TTS_DIST_INSTALL_DIR}")
+endif()
+message(STATUS "")

@@ -15,6 +15,7 @@ Build only (inplace):
 """
 
 import os
+import shutil
 import sys
 import subprocess
 from pathlib import Path
@@ -36,7 +37,22 @@ class CMakeBuild(build_ext):
 
     def build_extension(self, ext):
         ext_dir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        build_dir = os.path.join(ext.source_dir, "build")
+
+        # 快捷路径：CMake 已编译好 .so，直接复制到 wheel staging 目录，跳过二次 cmake
+        prebuilt = os.environ.get("SPACEMIT_PREBUILT_EXTENSION")
+        if prebuilt:
+            prebuilt_path = Path(prebuilt)
+            if not prebuilt_path.exists():
+                raise FileNotFoundError(f"Prebuilt extension not found: {prebuilt}")
+            os.makedirs(ext_dir, exist_ok=True)
+            shutil.copy2(prebuilt_path, os.path.join(ext_dir, prebuilt_path.name))
+            return
+
+        build_dir = os.environ.get(
+            "SPACEMIT_CMAKE_BUILD_DIR",
+            os.path.join(ext.source_dir, "build"),
+        )
+        build_dir = os.path.abspath(build_dir)
 
         # Create build directory
         os.makedirs(build_dir, exist_ok=True)
@@ -47,7 +63,6 @@ class CMakeBuild(build_ext):
             with open(cache_file, 'r') as f:
                 content = f.read()
                 if ext.source_dir not in content:
-                    import shutil
                     shutil.rmtree(build_dir)
                     os.makedirs(build_dir, exist_ok=True)
 
@@ -56,6 +71,8 @@ class CMakeBuild(build_ext):
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={ext_dir}",
             f"-DPYTHON_EXECUTABLE={sys.executable}",
             "-DBUILD_PYTHON_BINDINGS=ON",
+            "-DBUILD_STREAM_DEMO=OFF",
+            "-DBUILD_SIMPLE_DEMO=OFF",
         ]
 
         # Build type
@@ -92,7 +109,6 @@ class CMakeBuild(build_ext):
                 break
 
         if built_lib:
-            import shutil
             dest = os.path.join(ext_dir, built_lib.name)
             shutil.copy2(built_lib, dest)
 
