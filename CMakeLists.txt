@@ -252,6 +252,14 @@ install(TARGETS tts
     LIBRARY DESTINATION lib
 )
 
+# kaldifst 通过 add_subdirectory(... EXCLUDE_FROM_ALL) 引入, 其自带的 install 规则被屏蔽。
+# 由于 libtts.a (fst_normalizer.cpp.o) PUBLIC-需要 kaldifst_core 的符号, 下游消费者
+# (如 application/native/omni_agent/voice_chat) 必须能链到 kaldifst_core + kaldifst_fst。
+# OpenFst 只开启了 HAVE_SCRIPT, 产物仅一个 libkaldifst_fst.a (OUTPUT_NAME 被重命名过)。
+if(TTS_USE_FST AND TARGET kaldifst_core AND TARGET fst)
+    install(TARGETS kaldifst_core fst ARCHIVE DESTINATION lib)
+endif()
+
 # =============================================================================
 # Demo 可执行程序
 # =============================================================================
@@ -260,9 +268,9 @@ install(TARGETS tts
 #
 option(BUILD_SIMPLE_DEMO "Build TTS file/simple demo" ON)
 
-# 检测是否在 SDK 仓库中编译
-set(_SDK_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
-if(EXISTS "${_SDK_ROOT}/build/envsetup.sh")
+# 检测是否在 SDK build 流程内编译（envsetup.sh 已 source 则 SROBOTIS_OUTPUT_ROOT 被 export）。
+# 仅文件存在不算——用户裸 cmake 时 audio 组件不一定已装，不应默认打开 BUILD_STREAM_DEMO。
+if(DEFINED ENV{SROBOTIS_OUTPUT_ROOT} AND NOT "$ENV{SROBOTIS_OUTPUT_ROOT}" STREQUAL "")
     set(_IN_SDK_BUILD ON)
 else()
     set(_IN_SDK_BUILD OFF)
@@ -280,19 +288,20 @@ endif()
 # 流式 TTS 演示程序 (需要 space_audio / portaudio)
 if(BUILD_STREAM_DEMO)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(PORTAUDIO REQUIRED portaudio-2.0)
+    pkg_check_modules(PORTAUDIO portaudio-2.0)
     pkg_check_modules(SAMPLERATE samplerate)
 
     find_library(SPACE_AUDIO_LIB space_audio)
     find_library(AUDIO_RESAMPLER_LIB audio_resampler)
     find_path(SPACE_AUDIO_INC audio_base.hpp)
 
-    if(NOT SPACE_AUDIO_LIB OR NOT AUDIO_RESAMPLER_LIB OR NOT SPACE_AUDIO_INC)
-        message(FATAL_ERROR
-            "BUILD_STREAM_DEMO=ON but audio component not found!\n"
-            "Install audio component first, or disable with -DBUILD_STREAM_DEMO=OFF")
+    if(NOT SPACE_AUDIO_LIB OR NOT AUDIO_RESAMPLER_LIB OR NOT SPACE_AUDIO_INC OR NOT PORTAUDIO_FOUND)
+        message(WARNING "[tts] Audio component or PortAudio not found, disabling BUILD_STREAM_DEMO")
+        set(BUILD_STREAM_DEMO OFF)
     endif()
+endif()
 
+if(BUILD_STREAM_DEMO)
     find_package(Threads REQUIRED)
 
     add_executable(tts_stream_demo examples/tts_stream_demo.cpp)
