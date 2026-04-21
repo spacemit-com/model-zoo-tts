@@ -215,6 +215,17 @@ struct TtsEngine::Impl {
         }
 
         initialized = true;
+
+        // 应用初始 lexicon
+        if (!cfg.lexicon.empty()) {
+            std::vector<std::pair<std::string, std::string>> pairs;
+            pairs.reserve(cfg.lexicon.size());
+            for (const auto& e : cfg.lexicon) {
+                pairs.emplace_back(e.word, e.phoneme);
+            }
+            backend->updateLexicon(pairs);
+        }
+
         return true;
     }
 };
@@ -340,6 +351,16 @@ void TtsEngine::SetVolume(int volume) {
     if (impl_->backend) {
         impl_->backend->setVolume(volume / 100.0f);
     }
+}
+
+void TtsEngine::UpdateLexicon(const std::vector<PronunciationEntry>& entries) {
+    if (!impl_->backend) return;
+    std::vector<std::pair<std::string, std::string>> pairs;
+    pairs.reserve(entries.size());
+    for (const auto& e : entries) {
+        pairs.emplace_back(e.word, e.phoneme);
+    }
+    impl_->backend->updateLexicon(pairs);
 }
 
 TtsConfig TtsEngine::GetConfig() const {

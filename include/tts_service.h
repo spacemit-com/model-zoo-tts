@@ -51,6 +51,16 @@ enum class BackendType {
 };
 
 // -----------------------------------------------------------------------------
+// PronunciationEntry
+// -----------------------------------------------------------------------------
+
+struct PronunciationEntry {
+    std::string word;
+    std::string phoneme;
+    std::string locale = "zh";
+};
+
+// -----------------------------------------------------------------------------
 // TtsConfig
 // -----------------------------------------------------------------------------
 
@@ -76,6 +86,8 @@ struct TtsConfig {
 
     int num_threads = 2;
     bool enable_warmup = true;
+
+    std::vector<PronunciationEntry> lexicon;
 
     static TtsConfig Preset(const std::string& name);
     static std::vector<std::string> AvailablePresets();
@@ -202,6 +214,7 @@ public:
     void SetSpeed(float speed);
     void SetSpeaker(int speaker_id);
     void SetVolume(int volume);
+    void UpdateLexicon(const std::vector<PronunciationEntry>& entries);
     TtsConfig GetConfig() const;
 
     bool IsInitialized() const;

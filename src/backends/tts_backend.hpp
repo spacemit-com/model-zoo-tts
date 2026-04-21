@@ -9,6 +9,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tts_config.hpp"
@@ -186,6 +187,15 @@ public:
     virtual ErrorInfo setPitch(float pitch) {
         (void)pitch;
         return ErrorInfo::error(ErrorCode::INTERNAL_ERROR, "Pitch update not supported");
+    }
+
+    /// @brief 更新自定义发音词典
+    /// @param entries word->phoneme 映射列表
+    /// @return 错误信息
+    virtual ErrorInfo updateLexicon(
+        const std::vector<std::pair<std::string, std::string>>& entries) {
+        (void)entries;
+        return ErrorInfo::error(ErrorCode::INTERNAL_ERROR, "Lexicon update not supported");
     }
 
 protected:

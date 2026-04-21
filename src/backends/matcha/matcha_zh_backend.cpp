@@ -76,6 +76,14 @@ void MatchaZhBackend::shutdownLanguageSpecific() {
     lexicon_.clear();
 }
 
+ErrorInfo MatchaZhBackend::updateLexicon(
+    const std::vector<std::pair<std::string, std::string>>& entries) {
+    for (const auto& [word, phonemes] : entries) {
+        lexicon_[word] = phonemes;
+    }
+    return ErrorInfo::ok();
+}
+
 // =============================================================================
 // 文本转 Token IDs (中文)
 // =============================================================================

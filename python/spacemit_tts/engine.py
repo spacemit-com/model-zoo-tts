@@ -437,6 +437,30 @@ class Engine:
         """
         self._engine.set_volume(volume)
 
+    def update_lexicon(self, entries: list):
+        """
+        Update custom pronunciation lexicon
+
+        Args:
+            entries: List of dicts with 'word', 'phoneme', and optional 'locale' keys,
+                     or list of PronunciationEntry objects
+
+        Example:
+            >>> engine.update_lexicon([
+            ...     {"word": "SpacemiT", "phoneme": "si pei si mi te"},
+            ...     {"word": "RISC-V", "phoneme": "rui si ke fai wu"},
+            ... ])
+        """
+        native_entries = []
+        for e in entries:
+            if isinstance(e, dict):
+                entry = _tts.PronunciationEntry(
+                    e["word"], e["phoneme"], e.get("locale", "zh"))
+            else:
+                entry = e
+            native_entries.append(entry)
+        self._engine.update_lexicon(native_entries)
+
     @property
     def config(self) -> Config:
         """Get current configuration"""

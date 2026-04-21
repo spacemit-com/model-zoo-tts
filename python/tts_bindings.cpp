@@ -99,6 +99,33 @@ PYBIND11_MODULE(_spacemit_tts, m) {
     // 枚举类型
     // =========================================================================
 
+    // =========================================================================
+    // PronunciationEntry
+    // =========================================================================
+
+    py::class_<SpacemiT::PronunciationEntry>(m, "PronunciationEntry",
+        "Custom pronunciation entry (word -> phoneme)")
+        .def(py::init<>())
+        .def(py::init([](const std::string& word, const std::string& phoneme,
+                const std::string& locale) {
+            SpacemiT::PronunciationEntry e;
+            e.word = word;
+            e.phoneme = phoneme;
+            e.locale = locale;
+            return e;
+        }), py::arg("word"), py::arg("phoneme"), py::arg("locale") = "zh")
+        .def_readwrite("word", &SpacemiT::PronunciationEntry::word)
+        .def_readwrite("phoneme", &SpacemiT::PronunciationEntry::phoneme)
+        .def_readwrite("locale", &SpacemiT::PronunciationEntry::locale)
+        .def("__repr__", [](const SpacemiT::PronunciationEntry& e) {
+            return "<PronunciationEntry '" + e.word + "' -> '" + e.phoneme +
+                "' locale=" + e.locale + ">";
+        });
+
+    // =========================================================================
+    // 枚举类型
+    // =========================================================================
+
     py::enum_<SpacemiT::AudioFormat>(m, "AudioFormat", "Audio format types")
         .value("PCM", SpacemiT::AudioFormat::PCM, "Raw PCM data")
         .value("WAV", SpacemiT::AudioFormat::WAV, "WAV file format")
@@ -143,6 +170,7 @@ PYBIND11_MODULE(_spacemit_tts, m) {
         .def_readwrite("remove_clicks", &SpacemiT::TtsConfig::remove_clicks, "Remove clicks")
         .def_readwrite("num_threads", &SpacemiT::TtsConfig::num_threads, "Number of inference threads")
         .def_readwrite("enable_warmup", &SpacemiT::TtsConfig::enable_warmup, "Enable warmup on startup")
+        .def_readwrite("lexicon", &SpacemiT::TtsConfig::lexicon, "Custom pronunciation lexicon")
 
         // 静态工厂方法
         .def_static("preset", &SpacemiT::TtsConfig::Preset,
@@ -323,6 +351,9 @@ PYBIND11_MODULE(_spacemit_tts, m) {
         .def("set_volume", &SpacemiT::TtsEngine::SetVolume,
             py::arg("volume"),
             "Set volume [0, 100]")
+        .def("update_lexicon", &SpacemiT::TtsEngine::UpdateLexicon,
+            py::arg("entries"),
+            "Update custom pronunciation lexicon")
         .def("get_config", &SpacemiT::TtsEngine::GetConfig,
             "Get current configuration")
 
