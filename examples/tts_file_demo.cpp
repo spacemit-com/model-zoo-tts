@@ -106,6 +106,8 @@ void printUsage(const char* program) {
         << "  -l <engine>    引擎选择 (格式: 引擎:变体)\n"
         << "  -o <file>      输出文件 (默认: output.wav)\n"
         << "  -s <speed>     语速倍率 (默认: 1.0)\n"
+        << "  --lexicon <entries>  自定义发音 (格式: word:phoneme,...)\n"
+        << "                 例: --lexicon \"SpacemiT:si pei si mi te,RISC-V:rui si ke fai wu\"\n"
         << "  --list-voices  列出 Kokoro 可用音色\n"
         << "  -h             显示帮助\n"
         << "\n"
@@ -130,6 +132,7 @@ void printUsage(const char* program) {
         << "  " << program << " -p \"你好\" -l kokoro              # Kokoro 默认音色\n"
         << "  " << program << " -p \"你好\" -l kokoro:yunxi        # Kokoro 短名\n"
         << "  " << program << " -p \"你好\" -l kokoro:zm_yunxi     # Kokoro 全名\n"
+        << "  " << program << " -p \"欢迎使用SpacemiT\" --lexicon \"SpacemiT:si pei si mi te\"  # 自定义发音\n"
         << std::endl;
 }
 
@@ -266,6 +269,7 @@ int main(int argc, char* argv[]) {
     std::string engine_spec = "matcha:zh";
     std::string output_file = "output.wav";
     float speed = 1.0f;
+    std::string lexicon_str;
     bool interactive = true;
 
     // 解析参数
@@ -285,6 +289,8 @@ int main(int argc, char* argv[]) {
             output_file = argv[++i];
         } else if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
             speed = std::stof(argv[++i]);
+        } else if (strcmp(argv[i], "--lexicon") == 0 && i + 1 < argc) {
+            lexicon_str = argv[++i];
         }
     }
 
@@ -330,6 +336,35 @@ int main(int argc, char* argv[]) {
     std::cout << "引擎: " << engine.GetEngineName() << std::endl;
     std::cout << "采样率: " << engine.GetSampleRate() << " Hz" << std::endl;
     std::cout << "说话人数: " << engine.GetNumSpeakers() << std::endl;
+
+    // 解析并应用自定义发音词典
+    if (!lexicon_str.empty()) {
+        std::vector<SpacemiT::PronunciationEntry> entries;
+        std::string item;
+        for (size_t i = 0; i <= lexicon_str.size(); ++i) {
+            if (i == lexicon_str.size() || lexicon_str[i] == ',') {
+                auto colon = item.find(':');
+                if (colon != std::string::npos) {
+                    SpacemiT::PronunciationEntry e;
+                    e.word = item.substr(0, colon);
+                    e.phoneme = item.substr(colon + 1);
+                    entries.push_back(std::move(e));
+                }
+                item.clear();
+            } else {
+                item += lexicon_str[i];
+            }
+        }
+        if (!entries.empty()) {
+            engine.UpdateLexicon(entries);
+            std::cout << "自定义发音: ";
+            for (size_t j = 0; j < entries.size(); ++j) {
+                if (j > 0) std::cout << ", ";
+                std::cout << entries[j].word << " -> " << entries[j].phoneme;
+            }
+            std::cout << std::endl;
+        }
+    }
     std::cout << std::endl;
 
     if (interactive) {
