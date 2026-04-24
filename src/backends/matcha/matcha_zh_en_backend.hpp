@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "backends/matcha/matcha_backend.hpp"
@@ -46,6 +47,8 @@ protected:
     bool usesBlankTokens() const override;
     ErrorInfo initializeLanguageSpecific(const TtsConfig& config) override;
     void shutdownLanguageSpecific() override;
+    ErrorInfo updateLexicon(
+        const std::vector<LexiconEntry>& entries) override;
 
 private:
     // -------------------------------------------------------------------------
@@ -73,12 +76,24 @@ private:
     /// @brief 处理罗马数字转中文读音
     std::vector<int64_t> processRomanNumeralToIds(const std::string& roman);
 
+    /// @brief 将拼音序列转换为 token IDs
+    std::vector<int64_t> convertPhonemesToIds(const std::string& phonemes);
+
+    /// @brief 处理拼音映射 (处理未知拼音)
+    std::string mapPhoneme(const std::string& phone);
+
     // -------------------------------------------------------------------------
     // 成员变量
     // -------------------------------------------------------------------------
 
     std::unique_ptr<Pinyin::Pinyin> pinyin_converter_;
     bool espeak_initialized_ = false;
+
+    struct LexiconValue {
+        std::string phoneme;
+        std::string locale;
+    };
+    std::unordered_map<std::string, LexiconValue> lexicon_;
 };
 
 }  // namespace tts

@@ -77,9 +77,9 @@ void MatchaZhBackend::shutdownLanguageSpecific() {
 }
 
 ErrorInfo MatchaZhBackend::updateLexicon(
-    const std::vector<std::pair<std::string, std::string>>& entries) {
-    for (const auto& [word, phonemes] : entries) {
-        lexicon_[word] = phonemes;
+    const std::vector<LexiconEntry>& entries) {
+    for (const auto& e : entries) {
+        lexicon_[e.word] = e.phoneme;
     }
     return ErrorInfo::ok();
 }

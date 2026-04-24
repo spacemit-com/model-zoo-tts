@@ -106,8 +106,9 @@ void printUsage(const char* program) {
         << "  -l <engine>    引擎选择 (格式: 引擎:变体)\n"
         << "  -o <file>      输出文件 (默认: output.wav)\n"
         << "  -s <speed>     语速倍率 (默认: 1.0)\n"
-        << "  --lexicon <entries>  自定义发音 (格式: word:phoneme,...)\n"
-        << "                 例: --lexicon \"SpacemiT:si pei si mi te,RISC-V:rui si ke fai wu\"\n"
+        << "  --lexicon <entries>  自定义发音 (格式: word:phoneme[:locale], 多条逗号分隔)\n"
+        << "                 locale=zh (默认): phoneme 为带声调拼音, 空格分隔, 如 \"wei4 ni3\"\n"
+        << "                 locale=en (仅 matcha:zh-en): phoneme 为英文单词/短语, 走 espeak 生成 IPA\n"
         << "  --list-voices  列出 Kokoro 可用音色\n"
         << "  -h             显示帮助\n"
         << "\n"
@@ -132,7 +133,15 @@ void printUsage(const char* program) {
         << "  " << program << " -p \"你好\" -l kokoro              # Kokoro 默认音色\n"
         << "  " << program << " -p \"你好\" -l kokoro:yunxi        # Kokoro 短名\n"
         << "  " << program << " -p \"你好\" -l kokoro:zm_yunxi     # Kokoro 全名\n"
-        << "  " << program << " -p \"欢迎使用SpacemiT\" --lexicon \"SpacemiT:si pei si mi te\"  # 自定义发音\n"
+        << "  # 中文热词 (matcha:zh 或 matcha:zh-en): 纠正多音字, phoneme 为带声调拼音\n"
+        << "  " << program << " -p \"你好,我是语音合成模型,很高兴为你服务\" -l matcha:zh \\\n"
+        << "      --lexicon \"为你:wei4 ni3\"    # 把 '为你' 从 wei2 ni3 纠正为 wei4 ni3\n"
+        << "  # 英文热词 (仅 matcha:zh-en): locale=en, phoneme 为英文单词, 让 espeak 按英文读\n"
+        << "  " << program << " -p \"你好,我是 SpaceMIT 的语音合成模型\" -l matcha:zh-en \\\n"
+        << "      --lexicon \"SpaceMIT:space meet:en\"\n"
+        << "  # 混合: 一次传多条, 用 locale 分别指定\n"
+        << "  " << program << " -p \"你好,我是 SpaceMIT 的语音合成模型,很高兴为你服务\" -l matcha:zh-en \\\n"
+        << "      --lexicon \"为你:wei4 ni3:zh,SpaceMIT:space meet:en\"\n"
         << std::endl;
 }
 
@@ -337,17 +346,24 @@ int main(int argc, char* argv[]) {
     std::cout << "采样率: " << engine.GetSampleRate() << " Hz" << std::endl;
     std::cout << "说话人数: " << engine.GetNumSpeakers() << std::endl;
 
-    // 解析并应用自定义发音词典
+    // 解析并应用自定义发音词典 (格式: word:phoneme[:locale], 多条逗号分隔)
     if (!lexicon_str.empty()) {
         std::vector<SpacemiT::PronunciationEntry> entries;
         std::string item;
         for (size_t i = 0; i <= lexicon_str.size(); ++i) {
             if (i == lexicon_str.size() || lexicon_str[i] == ',') {
-                auto colon = item.find(':');
-                if (colon != std::string::npos) {
+                auto first_colon = item.find(':');
+                if (first_colon != std::string::npos) {
                     SpacemiT::PronunciationEntry e;
-                    e.word = item.substr(0, colon);
-                    e.phoneme = item.substr(colon + 1);
+                    e.word = item.substr(0, first_colon);
+                    std::string rest = item.substr(first_colon + 1);
+                    auto second_colon = rest.rfind(':');
+                    if (second_colon != std::string::npos) {
+                        e.phoneme = rest.substr(0, second_colon);
+                        e.locale = rest.substr(second_colon + 1);
+                    } else {
+                        e.phoneme = rest;
+                    }
                     entries.push_back(std::move(e));
                 }
                 item.clear();
@@ -360,7 +376,8 @@ int main(int argc, char* argv[]) {
             std::cout << "自定义发音: ";
             for (size_t j = 0; j < entries.size(); ++j) {
                 if (j > 0) std::cout << ", ";
-                std::cout << entries[j].word << " -> " << entries[j].phoneme;
+                std::cout << entries[j].word << " -> " << entries[j].phoneme
+                        << " (" << entries[j].locale << ")";
             }
             std::cout << std::endl;
         }

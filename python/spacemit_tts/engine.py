@@ -443,12 +443,21 @@ class Engine:
 
         Args:
             entries: List of dicts with 'word', 'phoneme', and optional 'locale' keys,
-                     or list of PronunciationEntry objects
+                     or list of PronunciationEntry objects.
+
+                     locale='zh' (default): phoneme is space-separated pinyin with
+                         tone numbers 1-4, e.g. "wei4 ni3".
+                     locale='en' (only matcha:zh-en): phoneme is English word(s),
+                         rendered by espeak-ng, e.g. "space meet".
 
         Example:
+            >>> # Chinese polyphone correction: force '为你' to wei4 ni3
             >>> engine.update_lexicon([
-            ...     {"word": "SpacemiT", "phoneme": "si pei si mi te"},
-            ...     {"word": "RISC-V", "phoneme": "rui si ke fai wu"},
+            ...     {"word": "为你", "phoneme": "wei4 ni3"},
+            ... ])
+            >>> # English word (matcha:zh-en only): render via espeak
+            >>> engine.update_lexicon([
+            ...     {"word": "SpaceMIT", "phoneme": "space meet", "locale": "en"},
             ... ])
         """
         native_entries = []
