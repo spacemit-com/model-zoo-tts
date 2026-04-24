@@ -203,6 +203,14 @@ void MatchaZhBackend::loadLexicon(const std::string& path) {
 std::vector<int64_t> MatchaZhBackend::convertWordToIds(const std::string& word) {
     const auto& token_to_id = getTokenToIdMap();
 
+    // Skip words containing English letters — zh model cannot pronounce them
+    auto chars_check = text::splitUtf8(word);
+    bool has_english = std::any_of(chars_check.begin(), chars_check.end(),
+        [](const std::string& c) { return text::isEnglishLetter(c); });
+    if (has_english) {
+        return {};
+    }
+
     // 转小写查找
     std::string lower_word = word;
     std::transform(lower_word.begin(), lower_word.end(), lower_word.begin(), ::tolower);
