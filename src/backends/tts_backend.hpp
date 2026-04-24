@@ -189,11 +189,17 @@ public:
         return ErrorInfo::error(ErrorCode::INTERNAL_ERROR, "Pitch update not supported");
     }
 
+    struct LexiconEntry {
+        std::string word;
+        std::string phoneme;
+        std::string locale = "zh";
+    };
+
     /// @brief 更新自定义发音词典
-    /// @param entries word->phoneme 映射列表
+    /// @param entries word->phoneme->locale 映射列表
     /// @return 错误信息
     virtual ErrorInfo updateLexicon(
-        const std::vector<std::pair<std::string, std::string>>& entries) {
+        const std::vector<LexiconEntry>& entries) {
         (void)entries;
         return ErrorInfo::error(ErrorCode::INTERNAL_ERROR, "Lexicon update not supported");
     }

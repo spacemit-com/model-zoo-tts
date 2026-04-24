@@ -73,6 +73,15 @@ ErrorInfo MatchaZhEnBackend::initializeLanguageSpecific(const TtsConfig& config)
 void MatchaZhEnBackend::shutdownLanguageSpecific() {
     pinyin_converter_.reset();
     espeak_initialized_ = false;
+    lexicon_.clear();
+}
+
+ErrorInfo MatchaZhEnBackend::updateLexicon(
+    const std::vector<LexiconEntry>& entries) {
+    for (const auto& e : entries) {
+        lexicon_[e.word] = {e.phoneme, e.locale};
+    }
+    return ErrorInfo::ok();
 }
 
 // =============================================================================
@@ -111,6 +120,35 @@ std::vector<int64_t> MatchaZhEnBackend::textToTokenIds(const std::string& text) 
 }
 
 std::vector<int64_t> MatchaZhEnBackend::processZhEnText(const std::string& text) {
+    // Lexicon lookup: scan text for exact matches before character-level processing
+    if (!lexicon_.empty()) {
+        for (const auto& [word, val] : lexicon_) {
+            size_t pos = text.find(word);
+            if (pos != std::string::npos) {
+                std::vector<int64_t> result;
+                std::string before = text.substr(0, pos);
+                std::string after = text.substr(pos + word.length());
+                if (!before.empty()) {
+                    auto ids = processZhEnText(before);
+                    result.insert(result.end(), ids.begin(), ids.end());
+                }
+                // locale routing: en → espeak IPA, zh → pinyin tokens
+                std::vector<int64_t> lex_ids;
+                if (val.locale == "en") {
+                    lex_ids = processEnglishToIds(val.phoneme);
+                } else {
+                    lex_ids = convertPhonemesToIds(val.phoneme);
+                }
+                result.insert(result.end(), lex_ids.begin(), lex_ids.end());
+                if (!after.empty()) {
+                    auto ids = processZhEnText(after);
+                    result.insert(result.end(), ids.begin(), ids.end());
+                }
+                return result;
+            }
+        }
+    }
+
     std::vector<int64_t> token_ids;
     const auto& token_to_id = getTokenToIdMap();
     std::vector<std::string> chars = text::splitUtf8(text);
@@ -339,6 +377,42 @@ std::vector<int64_t> MatchaZhEnBackend::processRomanNumeralToIds(const std::stri
     int value = text::romanToInt(roman);
     std::string chinese = text::intToChineseReading(value);
     return processChineseToPinyinIds(chinese);
+}
+
+std::vector<int64_t> MatchaZhEnBackend::convertPhonemesToIds(const std::string& phonemes) {
+    const auto& token_to_id = getTokenToIdMap();
+    std::vector<int64_t> ids;
+    std::istringstream iss(phonemes);
+    std::string phone;
+
+    while (iss >> phone) {
+        auto it = token_to_id.find(phone);
+        if (it != token_to_id.end()) {
+            ids.push_back(it->second);
+        } else {
+            std::string mapped = mapPhoneme(phone);
+            if (mapped != phone) {
+                auto mapped_it = token_to_id.find(mapped);
+                if (mapped_it != token_to_id.end()) {
+                    ids.push_back(mapped_it->second);
+                }
+            }
+        }
+    }
+
+    return ids;
+}
+
+std::string MatchaZhEnBackend::mapPhoneme(const std::string& phone) {
+    if (phone.length() > 1) {
+        char last = phone.back();
+        if (last >= '1' && last <= '5') {
+            return phone.substr(0, phone.length() - 1);
+        } else {
+            return phone + "1";
+        }
+    }
+    return phone;
 }
 
 }  // namespace tts

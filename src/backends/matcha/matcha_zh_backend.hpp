@@ -48,7 +48,7 @@ protected:
     ErrorInfo initializeLanguageSpecific(const TtsConfig& config) override;
     void shutdownLanguageSpecific() override;
     ErrorInfo updateLexicon(
-        const std::vector<std::pair<std::string, std::string>>& entries) override;
+        const std::vector<LexiconEntry>& entries) override;
 
 private:
     // -------------------------------------------------------------------------

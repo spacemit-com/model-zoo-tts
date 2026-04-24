@@ -218,12 +218,12 @@ struct TtsEngine::Impl {
 
         // 应用初始 lexicon
         if (!cfg.lexicon.empty()) {
-            std::vector<std::pair<std::string, std::string>> pairs;
-            pairs.reserve(cfg.lexicon.size());
+            std::vector<tts::ITtsBackend::LexiconEntry> lex_entries;
+            lex_entries.reserve(cfg.lexicon.size());
             for (const auto& e : cfg.lexicon) {
-                pairs.emplace_back(e.word, e.phoneme);
+                lex_entries.push_back({e.word, e.phoneme, e.locale});
             }
-            backend->updateLexicon(pairs);
+            backend->updateLexicon(lex_entries);
         }
 
         return true;
@@ -355,12 +355,12 @@ void TtsEngine::SetVolume(int volume) {
 
 void TtsEngine::UpdateLexicon(const std::vector<PronunciationEntry>& entries) {
     if (!impl_->backend) return;
-    std::vector<std::pair<std::string, std::string>> pairs;
-    pairs.reserve(entries.size());
+    std::vector<tts::ITtsBackend::LexiconEntry> lex_entries;
+    lex_entries.reserve(entries.size());
     for (const auto& e : entries) {
-        pairs.emplace_back(e.word, e.phoneme);
+        lex_entries.push_back({e.word, e.phoneme, e.locale});
     }
-    impl_->backend->updateLexicon(pairs);
+    impl_->backend->updateLexicon(lex_entries);
 }
 
 TtsConfig TtsEngine::GetConfig() const {
