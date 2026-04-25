@@ -99,10 +99,15 @@ python python/examples/tts_file_demo.py
 ```bash
 tts_stream_demo -p "自定义文本"
 tts_stream_demo -l # 查看设备
-tts_stream_demo -o 0 --output 48000 --channels 2 -e matcha:zh-en # 默认流式tts体验
+tts_stream_demo -o 0 --output-rate 48000 --channels 2 -e matcha:zh-en # 默认流式tts体验
 ```
 
-Python 流式示例：`python python/examples/tts_stream_demo.py --no-play` / `-p "自定义文本"`（需已安装 `space_audio`）。
+**Python 流式合成**（需已安装 `spacemit_tts`；播放时还需已安装 `spacemit_audio`）：
+
+```bash
+python python/examples/tts_stream_demo.py --no-play
+python python/examples/tts_stream_demo.py -p "自定义文本"
+```
 
 #### 2.3.2. 独立构建下验证
 
@@ -120,7 +125,8 @@ make -j$(nproc)
 
 **Python 文件合成：**
 ```bash
-make -C build tts-install-python   # 或设置 PYTHONPATH
+cd /path/to/tts
+cmake --build build --target tts-install-python   # 或设置 PYTHONPATH
 python python/examples/tts_file_demo.py
 ```
 
@@ -136,7 +142,7 @@ python python/examples/tts_file_demo.py
 | ---- | ---- |
 | `include/tts_service.h` | **C++ API 头文件**，应用侧只需包含此头文件并链接下方库即可调用 |
 | `build/lib/libtts.a` | C++ 核心库，链接时使用 |
-| `build/python/spacemit_tts/` | Python 包，`make tts-install-python` 安装后 `import spacemit_tts` |
+| `build/python/spacemit_tts/` | Python 包，`cmake --build build --target tts-install-python` 安装后 `import spacemit_tts` |
 
 示例可执行文件（非集成必需）：`build/bin/tts_file_demo`、`build/bin/tts_stream_demo`。运行与验证步骤见 [2.3.1](#231-在-sdk-中验证) 或 [2.3.2](#232-独立构建下验证)。
 

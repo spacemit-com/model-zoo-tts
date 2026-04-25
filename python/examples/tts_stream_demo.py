@@ -8,7 +8,7 @@
 3. 音频队列 - 存放合成的音频块
 4. 音频重采样 - 支持任意采样率上采样到48kHz
 5. 声道转换 - 支持单/双声道输出
-6. 实时播放 - 使用 space_audio 播放
+6. 实时播放 - 使用 spacemit_audio 播放
 
 用法:
   python streaming_demo.py                           # 使用默认文本
@@ -30,13 +30,13 @@ import numpy as np
 
 import spacemit_tts
 
-# 尝试导入 space_audio，如果不可用则禁用播放
+# 尝试导入 spacemit_audio，如果不可用则禁用播放
 try:
-    import space_audio
-    from space_audio import AudioPlayer
-    HAS_SPACE_AUDIO = True
+    import spacemit_audio
+    from spacemit_audio import AudioPlayer
+    HAS_SPACEMIT_AUDIO = True
 except ImportError:
-    HAS_SPACE_AUDIO = False
+    HAS_SPACEMIT_AUDIO = False
 
 
 # =============================================================================
@@ -229,15 +229,15 @@ def playback_thread(
         channels: 输出声道数 (1 或 2)
         enable_play: 是否启用播放
     """
-    if enable_play and not HAS_SPACE_AUDIO:
-        print("[播放] 警告: space_audio 未安装，禁用播放")
-        print("       安装: cd stt/audio/python && pip install -e .")
+    if enable_play and not HAS_SPACEMIT_AUDIO:
+        print("[播放] 警告: spacemit_audio 未安装，禁用播放")
+        print("       安装: cd components/multimedia/audio/python && pip install -e .")
         enable_play = False
 
     player = None
     if enable_play:
-        # 初始化 space_audio
-        space_audio.init(
+        # 初始化 spacemit_audio
+        spacemit_audio.init(
             sample_rate=output_rate,
             channels=channels,
         )

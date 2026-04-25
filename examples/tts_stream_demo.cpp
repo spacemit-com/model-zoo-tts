@@ -456,10 +456,10 @@ void synthesisThread(SpacemiT::TtsEngine& engine,
 // =============================================================================
 
 void playbackThread(AudioQueue& queue, bool enable_play, int output_rate, int channels, int device_index) {
-    std::unique_ptr<SpaceAudio::AudioPlayer> player;
+    std::unique_ptr<SpacemitAudio::AudioPlayer> player;
 
     if (enable_play) {
-        player = std::make_unique<SpaceAudio::AudioPlayer>(device_index);
+        player = std::make_unique<SpacemitAudio::AudioPlayer>(device_index);
         if (!player->Start(output_rate, channels)) {
             std::cerr << "[播放] 启动播放器失败" << std::endl;
             enable_play = false;
@@ -559,7 +559,7 @@ void listOutputDevices() {
     std::cout << "可用音频输出设备:" << std::endl;
     std::cout << "==================" << std::endl;
 
-    auto devices = SpaceAudio::AudioPlayer::ListDevices();
+    auto devices = SpacemitAudio::AudioPlayer::ListDevices();
 
     if (devices.empty()) {
         std::cout << "  未找到设备!" << std::endl;
