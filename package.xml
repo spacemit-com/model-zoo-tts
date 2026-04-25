@@ -7,6 +7,7 @@
   <system_depend check="pkg-config --exists sndfile">libsndfile1-dev</system_depend>
   <system_depend check="pkg-config --exists libcurl">libcurl4-openssl-dev</system_depend>
   <system_depend check="pkg-config --exists fftw3f">libfftw3-dev</system_depend>
+  <system_depend check="command -v espeak-ng">espeak-ng</system_depend>
   <system_depend>spacemit-onnxruntime</system_depend>
   <system_depend>python3-spacemit-ort</system_depend>
 

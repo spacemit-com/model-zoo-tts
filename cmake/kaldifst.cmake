@@ -131,6 +131,11 @@ add_subdirectory(${KALDIFST_DIR} ${CMAKE_BINARY_DIR}/kaldifst-build EXCLUDE_FROM
 # 指向外层 tts 项目, 这些 include 找不到 header。对 kaldifst_core target 补回正确路径。
 if(TARGET kaldifst_core)
   target_include_directories(kaldifst_core PRIVATE "${KALDIFST_DIR}")
+  set_target_properties(kaldifst_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
+if(TARGET fst)
+  set_target_properties(fst PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
 # 对外暴露 kaldifst 的 public header 搜索路径 (消费者以 #include "kaldifst/csrc/text-normalizer.h" 方式引用)
