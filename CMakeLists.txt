@@ -285,17 +285,17 @@ if(BUILD_SIMPLE_DEMO)
     install(TARGETS tts_file_demo RUNTIME DESTINATION bin)
 endif()
 
-# 流式 TTS 演示程序 (需要 space_audio / portaudio)
+# 流式 TTS 演示程序 (需要 spacemit_audio / portaudio)
 if(BUILD_STREAM_DEMO)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(PORTAUDIO portaudio-2.0)
     pkg_check_modules(SAMPLERATE samplerate)
 
-    find_library(SPACE_AUDIO_LIB space_audio)
+    find_library(SPACEMIT_AUDIO_LIB spacemit_audio)
     find_library(AUDIO_RESAMPLER_LIB audio_resampler)
-    find_path(SPACE_AUDIO_INC audio_base.hpp)
+    find_path(SPACEMIT_AUDIO_INC audio_base.hpp)
 
-    if(NOT SPACE_AUDIO_LIB OR NOT AUDIO_RESAMPLER_LIB OR NOT SPACE_AUDIO_INC OR NOT PORTAUDIO_FOUND)
+    if(NOT SPACEMIT_AUDIO_LIB OR NOT AUDIO_RESAMPLER_LIB OR NOT SPACEMIT_AUDIO_INC OR NOT PORTAUDIO_FOUND)
         message(WARNING "[tts] Audio component or PortAudio not found, disabling BUILD_STREAM_DEMO")
         set(BUILD_STREAM_DEMO OFF)
     endif()
@@ -307,13 +307,13 @@ if(BUILD_STREAM_DEMO)
     add_executable(tts_stream_demo examples/tts_stream_demo.cpp)
 
     target_include_directories(tts_stream_demo PRIVATE
-        ${SPACE_AUDIO_INC}
+        ${SPACEMIT_AUDIO_INC}
         ${PORTAUDIO_INCLUDE_DIRS}
     )
 
     target_link_libraries(tts_stream_demo PRIVATE
         tts
-        ${SPACE_AUDIO_LIB}
+        ${SPACEMIT_AUDIO_LIB}
         ${AUDIO_RESAMPLER_LIB}
         ${PORTAUDIO_LIBRARIES}
         ${SAMPLERATE_LIBRARIES}

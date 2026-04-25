@@ -579,8 +579,8 @@ class MyCallback(TtsCallback):
 ```python
 import spacemit_tts
 from spacemit_tts import TtsCallback
-import space_audio
-from space_audio import AudioPlayer
+import spacemit_audio
+from spacemit_audio import AudioPlayer
 
 class StreamingCallback(TtsCallback):
     def __init__(self, player):
@@ -594,7 +594,7 @@ class StreamingCallback(TtsCallback):
         print(f"播放: {result.get_duration_ms()}ms")
 
 # 配置音频播放 (22050Hz, mono)
-space_audio.init(sample_rate=22050, channels=1)
+spacemit_audio.init(sample_rate=22050, channels=1)
 
 with AudioPlayer() as player:
     player.start()
