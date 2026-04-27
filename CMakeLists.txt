@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(tts LANGUAGES CXX)
+project(tts LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -288,15 +288,37 @@ endif()
 # 流式 TTS 演示程序 (需要 spacemit_audio / portaudio)
 if(BUILD_STREAM_DEMO)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(PORTAUDIO portaudio-2.0)
     pkg_check_modules(SAMPLERATE samplerate)
+
+    # Use the same ALSA-only PortAudio policy as components/multimedia/audio.
+    # System PortAudio may initialize JACK/PulseAudio backends first and fail on K3
+    # when those services are unavailable, even though ALSA devices exist.
+    include(FetchContent)
+    if(NOT TARGET portaudio_static)
+        set(PA_USE_ALSA ON CACHE BOOL "" FORCE)
+        set(PA_USE_JACK OFF CACHE BOOL "" FORCE)
+        set(PA_USE_PULSEAUDIO OFF CACHE BOOL "" FORCE)
+        set(PA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(PA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+        FetchContent_Declare(portaudio
+            GIT_REPOSITORY https://github.com/PortAudio/portaudio.git
+            GIT_TAG v19.7.0
+        )
+        FetchContent_MakeAvailable(portaudio)
+
+        target_compile_options(portaudio_static PRIVATE -w)
+        if(TARGET portaudio)
+            target_compile_options(portaudio PRIVATE -w)
+        endif()
+    endif()
 
     find_library(SPACEMIT_AUDIO_LIB spacemit_audio)
     find_library(AUDIO_RESAMPLER_LIB audio_resampler)
     find_path(SPACEMIT_AUDIO_INC audio_base.hpp)
 
-    if(NOT SPACEMIT_AUDIO_LIB OR NOT AUDIO_RESAMPLER_LIB OR NOT SPACEMIT_AUDIO_INC OR NOT PORTAUDIO_FOUND)
-        message(WARNING "[tts] Audio component or PortAudio not found, disabling BUILD_STREAM_DEMO")
+    if(NOT SPACEMIT_AUDIO_LIB OR NOT AUDIO_RESAMPLER_LIB OR NOT SPACEMIT_AUDIO_INC)
+        message(WARNING "[tts] Audio component not found, disabling BUILD_STREAM_DEMO")
         set(BUILD_STREAM_DEMO OFF)
     endif()
 endif()
@@ -308,19 +330,17 @@ if(BUILD_STREAM_DEMO)
 
     target_include_directories(tts_stream_demo PRIVATE
         ${SPACEMIT_AUDIO_INC}
-        ${PORTAUDIO_INCLUDE_DIRS}
     )
 
     target_link_libraries(tts_stream_demo PRIVATE
         tts
         ${SPACEMIT_AUDIO_LIB}
         ${AUDIO_RESAMPLER_LIB}
-        ${PORTAUDIO_LIBRARIES}
+        portaudio_static
         ${SAMPLERATE_LIBRARIES}
         Threads::Threads
     )
     target_link_directories(tts_stream_demo PRIVATE
-        ${PORTAUDIO_LIBRARY_DIRS}
         ${SAMPLERATE_LIBRARY_DIRS}
     )
 
