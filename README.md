@@ -185,7 +185,12 @@ target_include_directories(your_target PRIVATE ${TTS_SOURCE_DIR}/include)
 
 ## 4. 常见问题
 
-暂无。如有问题可提交 Issue。
+| 现象 | 可能原因 | 处理 |
+| --- | --- | --- |
+| 首次合成明显慢 | 模型加载和 warmup 开销 | 以 warmup 后的合成 RTF 评估性能。 |
+| 英文发音异常 | `espeak-ng` 缺失或热词未配置 | 安装 `espeak-ng`，必要时用 `--lexicon` 指定读法。 |
+| 播放速度或音调异常 | 播放采样率与模型采样率不一致 | 用 `audio_demo play` 或 `AudioPlayer` 播放时开启重采样。 |
+| Kokoro 初始化很慢 | 模型和音色加载开销较大 | 应用启动阶段预初始化，不要在每轮对话里反复创建引擎。 |
 
 ## 5. 版本与发布
 
