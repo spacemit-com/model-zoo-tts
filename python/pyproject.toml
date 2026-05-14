@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spacemit_tts"
-version = "1.0.0"
+version = "1.0.2"
 description = "SpacemiT TTS (Text-To-Speech) Python bindings"
 readme = "README.md"
 license = {text = "Apache-2.0"}

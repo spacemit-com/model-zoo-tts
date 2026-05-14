@@ -10,21 +10,38 @@
 namespace tts {
 namespace text {
 
+namespace {
+
+void ReplaceAll(std::string* text, const std::string& from, const std::string& to) {
+    size_t pos = 0;
+    while ((pos = text->find(from, pos)) != std::string::npos) {
+        text->replace(pos, from.length(), to);
+        pos += to.length();
+    }
+}
+
+std::string RemoveZeroWidthJoiner(const std::string& ipa) {
+    std::string text = ipa;
+    ReplaceAll(&text, "\xe2\x80\x8d", "");
+    return text;
+}
+
+void ApplyReplacements(
+    std::string* text,
+    const std::vector<std::pair<std::string, std::string>>& replacements) {
+    for (const auto& rep : replacements) {
+        ReplaceAll(text, rep.first, rep.second);
+    }
+}
+
+}  // namespace
+
 // =============================================================================
 // IPA phoneme conversion
 // =============================================================================
 
 std::string convertToGruutEnUs(const std::string& ipa) {
-    std::string text = ipa;
-
-    // First, remove zero-width joiner (U+200D) that espeak-ng sometimes adds
-    {
-        std::string zwj = "\xe2\x80\x8d";  // Zero-width joiner UTF-8
-        size_t pos = 0;
-        while ((pos = text.find(zwj, pos)) != std::string::npos) {
-            text.erase(pos, zwj.length());
-        }
-    }
+    std::string text = RemoveZeroWidthJoiner(ipa);
 
     // R-colored vowels (standard IPA -> Gruut US decomposed)
     std::vector<std::pair<std::string, std::string>> replacements = {
@@ -52,13 +69,28 @@ std::string convertToGruutEnUs(const std::string& ipa) {
         {"r", "\xc9\xb9"},    // Standard r -> Turned r (U+0279)
     };
 
-    for (const auto& rep : replacements) {
-        size_t pos = 0;
-        while ((pos = text.find(rep.first, pos)) != std::string::npos) {
-            text.replace(pos, rep.first.length(), rep.second);
-            pos += rep.second.length();
-        }
-    }
+    ApplyReplacements(&text, replacements);
+
+    return text;
+}
+
+std::string convertToMatchaEnUs(const std::string& ipa) {
+    std::string text = RemoveZeroWidthJoiner(ipa);
+
+    // Keep diphthongs and affricates decomposed because Matcha English tokens
+    // include e/ɪ/a/ʊ/t/ʃ/d/ʒ, but not A/I/O/W/Y/ʧ/ʤ.
+    std::vector<std::pair<std::string, std::string>> replacements = {
+        // nurse
+        {"\xc9\x9d", "\xc9\x9c\xc9\xb9"},
+        // letter
+        {"\xc9\x9a", "\xc9\x99\xc9\xb9"},
+
+        // Consonant normalization
+        {"g", "\xc9\xa1"},    // Standard g -> Script g (U+0261)
+        {"r", "\xc9\xb9"},    // Standard r -> Turned r (U+0279)
+    };
+
+    ApplyReplacements(&text, replacements);
 
     return text;
 }

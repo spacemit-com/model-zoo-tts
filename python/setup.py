@@ -99,7 +99,7 @@ class CMakeBuild(build_ext):
 
 # Read version from C++ header
 def get_version():
-    return "1.0.0"
+    return "1.0.2"
 
 
 # Read long description
