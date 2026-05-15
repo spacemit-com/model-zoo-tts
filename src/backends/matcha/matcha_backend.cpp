@@ -230,32 +230,9 @@ ErrorInfo MatchaBackend::synthesize(const std::string& text, SynthesisResult& re
             return ErrorInfo::ok();
         }
 
-        // 2. 添加 blank tokens (根据后端类型)
-        std::vector<int64_t> final_tokens;
-        if (usesBlankTokens()) {
-            final_tokens = addBlankTokens(token_ids);
-        } else {
-            final_tokens = token_ids;
-        }
-
-        // 3. 运行声学模型
-        std::vector<float> mel = runAcousticModel(final_tokens, current_speaker_, current_speed_);
-
-        if (mel.empty()) {
-            result.audio = AudioChunk::fromFloat({}, sample_rate_, true);
-            result.success = true;
-            return ErrorInfo::ok();
-        }
-
-        // 4. 运行声码器
-        std::vector<float> audio_samples = runVocoder(mel, mel_dim_);
-
-        // 5. 重采样（如果需要）
         int output_sample_rate = sample_rate_;
-        if (config_.output_sample_rate > 0 && config_.output_sample_rate != sample_rate_) {
-            audio_samples = audio::resampleAudio(audio_samples, sample_rate_, config_.output_sample_rate);
-            output_sample_rate = config_.output_sample_rate;
-        }
+        std::vector<float> audio_samples =
+            synthesizeTokenIdsToAudio(token_ids, &output_sample_rate);
 
         // 记录结束时间
         auto end_time = std::chrono::high_resolution_clock::now();
@@ -351,6 +328,44 @@ std::vector<int64_t> MatchaBackend::addBlankTokens(const std::vector<int64_t>& t
     }
 
     return result;
+}
+
+std::vector<float> MatchaBackend::synthesizeTokenIdsToAudio(
+    const std::vector<int64_t>& token_ids,
+    int* output_sample_rate) {
+    if (output_sample_rate != nullptr) {
+        *output_sample_rate = sample_rate_;
+    }
+    if (token_ids.empty()) {
+        return {};
+    }
+
+    // 添加 blank tokens (根据后端类型)
+    std::vector<int64_t> final_tokens;
+    if (usesBlankTokens()) {
+        final_tokens = addBlankTokens(token_ids);
+    } else {
+        final_tokens = token_ids;
+    }
+
+    // 运行声学模型
+    std::vector<float> mel = runAcousticModel(final_tokens, current_speaker_, current_speed_);
+    if (mel.empty()) {
+        return {};
+    }
+
+    // 运行声码器
+    std::vector<float> audio_samples = runVocoder(mel, mel_dim_);
+
+    // 重采样（如果需要）
+    if (config_.output_sample_rate > 0 && config_.output_sample_rate != sample_rate_) {
+        audio_samples = audio::resampleAudio(audio_samples, sample_rate_, config_.output_sample_rate);
+        if (output_sample_rate != nullptr) {
+            *output_sample_rate = config_.output_sample_rate;
+        }
+    }
+
+    return audio_samples;
 }
 
 bool MatchaBackend::checkEspeakNgAvailable() {

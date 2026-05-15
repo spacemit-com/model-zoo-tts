@@ -110,6 +110,11 @@ protected:
     /// @return 带 blank 的 tokens
     std::vector<int64_t> addBlankTokens(const std::vector<int64_t>& tokens);
 
+    /// @brief 将 token IDs 合成为音频样本
+    std::vector<float> synthesizeTokenIdsToAudio(
+        const std::vector<int64_t>& token_ids,
+        int* output_sample_rate);
+
     /// @brief 检查 espeak-ng 是否可用
     bool checkEspeakNgAvailable();
 

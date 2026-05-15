@@ -447,15 +447,15 @@ class Engine:
 
                      locale='zh' (default): phoneme is space-separated pinyin with
                          tone numbers 1-4, e.g. "wei4 ni3".
-                     locale='en' (only matcha:zh-en): phoneme is English word(s),
-                         rendered by espeak-ng, e.g. "space meet".
+                     locale='en' (matcha:en or matcha:zh-en): phoneme is
+                         English word(s), rendered by espeak-ng, e.g. "space meet".
 
         Example:
             >>> # Chinese polyphone correction: force '为你' to wei4 ni3
             >>> engine.update_lexicon([
             ...     {"word": "为你", "phoneme": "wei4 ni3"},
             ... ])
-            >>> # English word (matcha:zh-en only): render via espeak
+            >>> # English word (matcha:en or matcha:zh-en): render via espeak
             >>> engine.update_lexicon([
             ...     {"word": "SpaceMIT", "phoneme": "space meet", "locale": "en"},
             ... ])
