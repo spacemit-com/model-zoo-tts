@@ -19,7 +19,7 @@ struct TtsConfig {
     // 后端选择
     // -------------------------------------------------------------------------
 
-    BackendType backend = BackendType::MATCHA_ZH;  ///< 后端类型
+    BackendType backend = BackendType::MATCHA_ZH_EN;  ///< 后端类型
 
     // -------------------------------------------------------------------------
     // 模型配置
@@ -42,7 +42,7 @@ struct TtsConfig {
     // -------------------------------------------------------------------------
 
     AudioFormat format = AudioFormat::WAV;  ///< 输出格式
-    int sample_rate = 22050;            ///< 输出采样率 (Hz)
+    int sample_rate = 16000;            ///< 输出采样率 (Hz)
     int output_sample_rate = 0;         ///< 重采样后采样率 (0=不重采样)
     int volume = 50;                    ///< 音量 [0, 100]
 
@@ -70,6 +70,7 @@ struct TtsConfig {
 
     int num_threads = 2;                ///< 推理线程数
     bool enable_warmup = true;          ///< 启动时预热
+    std::string provider = "auto";      ///< 推理后端: auto/cpu/spacemit
 
     // -------------------------------------------------------------------------
     // 链式配置
@@ -114,6 +115,12 @@ struct TtsConfig {
     TtsConfig withFormat(AudioFormat fmt) const {
         auto c = *this;
         c.format = fmt;
+        return c;
+    }
+
+    TtsConfig withProvider(const std::string& value) const {
+        auto c = *this;
+        c.provider = value;
         return c;
     }
 

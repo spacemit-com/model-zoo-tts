@@ -141,6 +141,9 @@ private:
     /// @brief 预热模型
     void warmUpModels();
 
+    /// @brief Finish ONNX Runtime profiling and print emitted file paths.
+    void endOrtProfiling();
+
 protected:
     // 后端类型
     BackendType type_;
@@ -163,6 +166,9 @@ private:
     std::unique_ptr<Ort::Env> env_;
     std::unique_ptr<Ort::Session> acoustic_model_;
     std::unique_ptr<Ort::Session> vocoder_model_;
+    bool trace_enabled_ = false;
+    bool ort_profiling_enabled_ = false;
+    std::string ort_profile_prefix_;
 
     // 状态
     bool initialized_ = false;

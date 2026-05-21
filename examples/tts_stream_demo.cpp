@@ -109,19 +109,19 @@ std::string resolveVoiceName(const std::string& input) {
 
 EngineSelection parseEngine(const std::string& spec) {
     EngineSelection sel;
-    sel.backend = SpacemiT::BackendType::MATCHA_ZH;
+    sel.backend = SpacemiT::BackendType::MATCHA_ZH_EN;
 
     auto colon = spec.find(':');
     std::string engine = (colon != std::string::npos) ? spec.substr(0, colon) : spec;
     std::string variant = (colon != std::string::npos) ? spec.substr(colon + 1) : "";
 
     if (engine == "matcha") {
-        if (variant.empty() || variant == "zh") {
+        if (variant.empty() || variant == "zh-en" || variant == "zhen") {
+            sel.backend = SpacemiT::BackendType::MATCHA_ZH_EN;
+        } else if (variant == "zh") {
             sel.backend = SpacemiT::BackendType::MATCHA_ZH;
         } else if (variant == "en") {
             sel.backend = SpacemiT::BackendType::MATCHA_EN;
-        } else if (variant == "zh-en" || variant == "zhen") {
-            sel.backend = SpacemiT::BackendType::MATCHA_ZH_EN;
         } else {
             std::cerr << "错误: 未知 Matcha 变体 '" << variant << "'\n"
                 << "可用变体: zh, en, zh-en\n";
@@ -540,6 +540,7 @@ void printUsage(const char* program) {
         << "                    kokoro / kokoro:<voice>\n"
         << "  -o <device>       输出设备索引 (-1 为默认)\n"
         << "  -l, --list        列出可用音频输出设备\n"
+        << "  --provider <provider>           推理后端: auto/cpu/spacemit (默认: auto)\n"
         << "  --output-rate <N> 输出采样率 (默认: 48000)\n"
         << "  --channels <N>    输出声道数: 1=单声道, 2=双声道 (默认: 1)\n"
         << "  --no-play         不播放音频\n"
@@ -590,6 +591,7 @@ int main(int argc, char* argv[]) {
     int output_rate = 48000;  // 输出采样率
     int channels = 1;  // 输出声道数
     int output_device = -1;  // 输出设备索引
+    std::string provider = "auto";
 
     // 解析参数
     for (int i = 1; i < argc; i++) {
@@ -608,6 +610,8 @@ int main(int argc, char* argv[]) {
             engine_spec = argv[++i];
         } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             output_device = std::stoi(argv[++i]);
+        } else if (strcmp(argv[i], "--provider") == 0 && i + 1 < argc) {
+            provider = argv[++i];
         } else if (strcmp(argv[i], "--no-play") == 0) {
             enable_play = false;
         } else if (strcmp(argv[i], "--delay") == 0 && i + 1 < argc) {
@@ -660,6 +664,7 @@ int main(int argc, char* argv[]) {
     SpacemiT::TtsConfig config;
     config.backend = selection.backend;
     config.sample_rate = sample_rate;
+    config.provider = provider;
 
     if (selection.backend == SpacemiT::BackendType::KOKORO && !selection.voice.empty()) {
         config.voice = selection.voice;

@@ -206,6 +206,7 @@ struct TtsEngine::Impl {
         internal_config.sample_rate = cfg.sample_rate;
         internal_config.num_threads = cfg.num_threads;
         internal_config.enable_warmup = cfg.enable_warmup;
+        internal_config.provider = cfg.provider;
 
         // 初始化
         auto error = backend->initialize(internal_config);

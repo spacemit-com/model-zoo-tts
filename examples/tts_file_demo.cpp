@@ -106,6 +106,7 @@ void printUsage(const char* program) {
         << "  -l <engine>    引擎选择 (格式: 引擎:变体)\n"
         << "  -o <file>      输出文件 (默认: output.wav)\n"
         << "  -s <speed>     语速倍率 (默认: 1.0)\n"
+        << "  --provider <provider>           推理后端: auto/cpu/spacemit (默认: auto)\n"
         << "  --lexicon <entries>  自定义发音 (格式: word:phoneme[:locale], 多条逗号分隔)\n"
         << "                 locale=zh (默认): phoneme 为带声调拼音, 空格分隔, 如 \"wei4 ni3\"\n"
         << "                 locale=en (matcha:en 或 matcha:zh-en): phoneme 为英文单词/短语, 走 espeak 生成 IPA\n"
@@ -113,7 +114,7 @@ void printUsage(const char* program) {
         << "  -h             显示帮助\n"
         << "\n"
         << "引擎格式:\n"
-        << "  matcha         Matcha 中文 (= matcha:zh)\n"
+        << "  matcha         Matcha 中英混合 (= matcha:zh-en)\n"
         << "  matcha:zh      Matcha 中文 (22050Hz)\n"
         << "  matcha:en      Matcha 英文 (22050Hz)\n"
         << "  matcha:zh-en   Matcha 中英混合 (16000Hz)\n"
@@ -201,7 +202,7 @@ void printVoiceList() {
 
 EngineSelection parseEngine(const std::string& spec) {
     EngineSelection sel;
-    sel.backend = SpacemiT::BackendType::MATCHA_ZH;
+    sel.backend = SpacemiT::BackendType::MATCHA_ZH_EN;
 
     // Split on ':'
     auto colon = spec.find(':');
@@ -209,12 +210,12 @@ EngineSelection parseEngine(const std::string& spec) {
     std::string variant = (colon != std::string::npos) ? spec.substr(colon + 1) : "";
 
     if (engine == "matcha") {
-        if (variant.empty() || variant == "zh") {
+        if (variant.empty() || variant == "zh-en" || variant == "zhen") {
+            sel.backend = SpacemiT::BackendType::MATCHA_ZH_EN;
+        } else if (variant == "zh") {
             sel.backend = SpacemiT::BackendType::MATCHA_ZH;
         } else if (variant == "en") {
             sel.backend = SpacemiT::BackendType::MATCHA_EN;
-        } else if (variant == "zh-en" || variant == "zhen") {
-            sel.backend = SpacemiT::BackendType::MATCHA_ZH_EN;
         } else {
             std::cerr << "错误: 未知 Matcha 变体 '" << variant << "'\n"
                 << "可用变体: zh, en, zh-en\n";
@@ -275,10 +276,11 @@ bool synthesize(SpacemiT::TtsEngine& engine, const std::string& text,
 
 int main(int argc, char* argv[]) {
     std::string text;
-    std::string engine_spec = "matcha:zh";
+    std::string engine_spec = "matcha:zh-en";
     std::string output_file = "output.wav";
     float speed = 1.0f;
     std::string lexicon_str;
+    std::string provider = "auto";
     bool interactive = true;
 
     // 解析参数
@@ -298,6 +300,8 @@ int main(int argc, char* argv[]) {
             output_file = argv[++i];
         } else if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
             speed = std::stof(argv[++i]);
+        } else if (strcmp(argv[i], "--provider") == 0 && i + 1 < argc) {
+            provider = argv[++i];
         } else if (strcmp(argv[i], "--lexicon") == 0 && i + 1 < argc) {
             lexicon_str = argv[++i];
         }
@@ -312,6 +316,7 @@ int main(int argc, char* argv[]) {
     SpacemiT::TtsConfig config;
     config.backend = selection.backend;
     config.speech_rate = speed;
+    config.provider = provider;
 
     // Kokoro: set voice
     if (selection.backend == SpacemiT::BackendType::KOKORO && !selection.voice.empty()) {

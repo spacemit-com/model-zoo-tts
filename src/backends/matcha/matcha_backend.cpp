@@ -3,10 +3,15 @@
 
 #include "backends/matcha/matcha_backend.hpp"
 
+#ifdef USE_SPACEMIT_EP
+#include "spacemit_ort_env.h"
+#endif
+
 #include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -19,6 +24,7 @@
 #include <numeric>
 #include <regex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "audio/audio_processor.hpp"
@@ -33,6 +39,111 @@ namespace {
 struct PcloseDeleter {
     void operator()(FILE* p) const { if (p) pclose(p); }
 };
+
+std::string getEnvString(const char* name, const std::string& default_value = "") {
+    const char* value = std::getenv(name);
+    if (value == nullptr || value[0] == '\0') {
+        return default_value;
+    }
+    return value;
+}
+
+std::string toLower(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+bool getEnvFlag(const char* name) {
+    std::string value = toLower(getEnvString(name));
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+std::string normalizeProvider(const std::string& provider, const std::string& source) {
+    std::string value = toLower(provider);
+    if (value.empty() || value == "auto") {
+        return "auto";
+    }
+    if (value == "cpu") {
+        return "cpu";
+    }
+    if (value == "spacemit" || value == "spacemit_ep" || value == "ep") {
+        return "spacemit";
+    }
+
+    std::cerr << "[TTS] Unsupported provider '" << provider << "' from " << source
+              << ", fallback to auto" << std::endl;
+    return "auto";
+}
+
+std::string normalizeProviderEnv(const char* name) {
+    const char* value = std::getenv(name);
+    if (value == nullptr || value[0] == '\0') {
+        return "";
+    }
+    return normalizeProvider(value, name);
+}
+
+std::string autoProviderForComponent(
+    tts::BackendType backend_type,
+    const std::string& component) {
+    if (component == "acoustic") {
+        if (backend_type == tts::BackendType::MATCHA_ZH_EN) {
+            return "cpu";
+        }
+        return "spacemit";
+    }
+    return "cpu";
+}
+
+std::string resolveProvider(tts::BackendType backend_type,
+                            const std::string& component,
+                            const std::string& configured_provider,
+                            const char* env_name) {
+    std::string provider = normalizeProvider(configured_provider, "config.provider");
+    const bool config_provider_is_auto = (provider == "auto");
+    std::string env_provider = normalizeProviderEnv("SPACEMIT_TTS_PROVIDER");
+    if (provider == "auto" && !env_provider.empty()) {
+        provider = env_provider;
+    }
+
+    std::string env_component_provider = normalizeProviderEnv(env_name);
+    if (config_provider_is_auto && !env_component_provider.empty()) {
+        return env_component_provider;
+    }
+    if (provider == "cpu") {
+        return provider;
+    }
+    if (provider == "spacemit") {
+        return autoProviderForComponent(backend_type, component);
+    }
+    return autoProviderForComponent(backend_type, component);
+}
+
+bool isSpacemitEpAvailable() {
+#ifdef USE_SPACEMIT_EP
+    return true;
+#else
+    return false;
+#endif
+}
+
+int getEnvInt(const char* name, int default_value) {
+    const char* value = std::getenv(name);
+    if (value == nullptr || value[0] == '\0') {
+        return default_value;
+    }
+    try {
+        return std::max(1, std::stoi(value));
+    } catch (...) {
+        return default_value;
+    }
+}
+
+int64_t elapsedMs(std::chrono::high_resolution_clock::time_point begin,
+                  std::chrono::high_resolution_clock::time_point end) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+}
 }  // namespace
 
 namespace tts {
@@ -63,7 +174,26 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
 
     config_ = config;
     createInternalConfig();
+    trace_enabled_ = getEnvFlag("SPACEMIT_TTS_TRACE");
+    ort_profile_prefix_ = getEnvString("SPACEMIT_TTS_PROFILE");
+    ort_profiling_enabled_ = !ort_profile_prefix_.empty();
 
+    std::string acoustic_provider = resolveProvider(type_, "acoustic", config.provider,
+        "SPACEMIT_TTS_ACOUSTIC_PROVIDER");
+    std::string vocoder_provider = resolveProvider(type_, "vocoder", config.provider,
+        "SPACEMIT_TTS_VOCODER_PROVIDER");
+    if (!isSpacemitEpAvailable()) {
+        if (acoustic_provider == "spacemit") {
+            std::cerr << "[TTS] SpaceMIT EP requested for acoustic but this binary was built"
+                      << " without USE_SPACEMIT_EP, fallback to CPU" << std::endl;
+            acoustic_provider = "cpu";
+        }
+        if (vocoder_provider == "spacemit") {
+            std::cerr << "[TTS] SpaceMIT EP requested for vocoder but this binary was built"
+                      << " without USE_SPACEMIT_EP, fallback to CPU" << std::endl;
+            vocoder_provider = "cpu";
+        }
+    }
     // 检查并下载模型（如果需要）
     tts::TTSModelDownloader downloader;
     std::string language = (type_ == BackendType::MATCHA_ZH) ? "zh" :
@@ -87,23 +217,83 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
         close(stderr_fd);
         close(devnull_fd);
 
-        Ort::SessionOptions session_options;
-        session_options.SetIntraOpNumThreads(3);
-        session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+        const int cpu_threads = getEnvInt("SPACEMIT_TTS_CPU_THREADS", 3);
+        const int ep_threads = getEnvInt("SPACEMIT_TTS_EP_THREADS", 3);
 
-        // RISC-V 特定: 禁用内存池以避免对齐问题
-        #if defined(__riscv) || defined(__riscv__)
-        session_options.DisableMemPattern();
-        session_options.DisableCpuMemArena();
-        #endif
+        auto configureSessionOptions = [&](Ort::SessionOptions& options,
+                                           const std::string& profile_name,
+                                           const std::string& requested_provider) {
+            bool use_spacemit_ep = (requested_provider == "spacemit");
+            std::string actual_provider = use_spacemit_ep ? "spacemit" : "cpu";
+            options.SetIntraOpNumThreads(use_spacemit_ep ? 1 : cpu_threads);
+            options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+#ifdef USE_SPACEMIT_EP
+            if (use_spacemit_ep) {
+                std::unordered_map<std::string, std::string> ep_options = {
+                    {"SPACEMIT_EP_INTRA_THREAD_NUM", std::to_string(ep_threads)}
+                };
+                Ort::Status status = Ort::SessionOptionsSpaceMITEnvInit(options, ep_options);
+                if (status.IsOK()) {
+                    std::cout << "[TTS] SpaceMIT EP initialized for " << profile_name
+                              << " (threads=" << ep_threads << ")" << std::endl;
+                } else {
+                    std::cerr << "[TTS] SpaceMIT EP init failed for " << profile_name
+                              << ": " << status.GetErrorMessage()
+                              << ", fallback to CPU" << std::endl;
+                    actual_provider = "cpu";
+                    use_spacemit_ep = false;
+                    options.SetIntraOpNumThreads(cpu_threads);
+                }
+            }
+#else
+            if (use_spacemit_ep) {
+                std::cerr << "[TTS] SpaceMIT EP requested for " << profile_name
+                          << " but this binary was built without USE_SPACEMIT_EP"
+                          << std::endl;
+                actual_provider = "cpu";
+                use_spacemit_ep = false;
+                options.SetIntraOpNumThreads(cpu_threads);
+            }
+#endif
+
+            if (ort_profiling_enabled_) {
+                std::string prefix = ort_profile_prefix_ + "_" + profile_name;
+                options.EnableProfiling(prefix.c_str());
+            }
+
+            // RISC-V CPU path: disable memory arena/pattern to avoid alignment issues.
+#if defined(__riscv) || defined(__riscv__)
+            if (!use_spacemit_ep) {
+                options.DisableMemPattern();
+                options.DisableCpuMemArena();
+            }
+#endif
+            return actual_provider;
+        };
+
+        Ort::SessionOptions acoustic_options;
+        Ort::SessionOptions vocoder_options;
+        acoustic_provider = configureSessionOptions(acoustic_options, "acoustic", acoustic_provider);
+        vocoder_provider = configureSessionOptions(vocoder_options, "vocoder", vocoder_provider);
+
+        if (trace_enabled_) {
+            std::cout << "[TTS] provider=" << normalizeProvider(config.provider, "config.provider")
+                      << " acoustic_provider=" << acoustic_provider
+                      << " vocoder_provider=" << vocoder_provider
+                      << " cpu_threads=" << cpu_threads
+                      << " ep_threads=" << ep_threads
+                      << " profile_prefix=" << (ort_profiling_enabled_ ? ort_profile_prefix_ : "")
+                      << std::endl;
+        }
 
         // 加载声学模型
         acoustic_model_ = std::make_unique<Ort::Session>(
-            *env_, internal_config_.acoustic_model_path.c_str(), session_options);
+            *env_, internal_config_.acoustic_model_path.c_str(), acoustic_options);
 
         // 加载声码器模型
         vocoder_model_ = std::make_unique<Ort::Session>(
-            *env_, internal_config_.vocoder_path.c_str(), session_options);
+            *env_, internal_config_.vocoder_path.c_str(), vocoder_options);
 
         // 加载 token 映射
         if (type_ == BackendType::MATCHA_ZH_EN) {
@@ -139,6 +329,7 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
 
 void MatchaBackend::shutdown() {
     if (initialized_) {
+        endOrtProfiling();
         shutdownLanguageSpecific();
         acoustic_model_.reset();
         vocoder_model_.reset();
@@ -206,6 +397,7 @@ ErrorInfo MatchaBackend::synthesize(const std::string& text, SynthesisResult& re
 
     try {
         // 0. 文本规范化 (处理数字、公式、货币、日期等)
+        auto normalize_start = std::chrono::high_resolution_clock::now();
         text::Language norm_lang;
         switch (type_) {
             case BackendType::MATCHA_ZH:
@@ -220,9 +412,12 @@ ErrorInfo MatchaBackend::synthesize(const std::string& text, SynthesisResult& re
                 break;
         }
         std::string normalized_text = text::normalizeText(text, norm_lang);
+        auto normalize_end = std::chrono::high_resolution_clock::now();
 
         // 1. 文本转 token IDs (派生类实现)
+        auto tokens_start = std::chrono::high_resolution_clock::now();
         std::vector<int64_t> token_ids = textToTokenIds(normalized_text);
+        auto tokens_end = std::chrono::high_resolution_clock::now();
 
         if (token_ids.empty()) {
             result.audio = AudioChunk::fromFloat({}, sample_rate_, true);
@@ -231,12 +426,25 @@ ErrorInfo MatchaBackend::synthesize(const std::string& text, SynthesisResult& re
         }
 
         int output_sample_rate = sample_rate_;
+        auto audio_start = std::chrono::high_resolution_clock::now();
         std::vector<float> audio_samples =
             synthesizeTokenIdsToAudio(token_ids, &output_sample_rate);
+        auto audio_end = std::chrono::high_resolution_clock::now();
 
         // 记录结束时间
         auto end_time = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        if (trace_enabled_) {
+            std::cout << "[TTS] synth_timing normalize_ms="
+                      << elapsedMs(normalize_start, normalize_end)
+                      << " text_to_tokens_ms=" << elapsedMs(tokens_start, tokens_end)
+                      << " acoustic_vocoder_audio_ms=" << elapsedMs(audio_start, audio_end)
+                      << " total_ms=" << duration.count()
+                      << " token_count=" << token_ids.size()
+                      << " audio_samples=" << audio_samples.size()
+                      << std::endl;
+        }
 
         // 填充结果
         result.audio = AudioChunk::fromFloat(audio_samples, output_sample_rate, true);
@@ -330,6 +538,33 @@ std::vector<int64_t> MatchaBackend::addBlankTokens(const std::vector<int64_t>& t
     return result;
 }
 
+void MatchaBackend::endOrtProfiling() {
+    if (!ort_profiling_enabled_) {
+        return;
+    }
+
+    Ort::AllocatorWithDefaultOptions allocator;
+    auto endProfile = [&](const char* label, std::unique_ptr<Ort::Session>& session) {
+        if (!session) {
+            return;
+        }
+        try {
+            auto profile_path = session->EndProfilingAllocated(allocator);
+            if (profile_path && profile_path.get() && profile_path.get()[0] != '\0') {
+                std::cout << "[TTS] ORT profile " << label << ": "
+                          << profile_path.get() << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[TTS] EndProfiling failed for " << label
+                      << ": " << e.what() << std::endl;
+        }
+    };
+
+    endProfile("acoustic", acoustic_model_);
+    endProfile("vocoder", vocoder_model_);
+    ort_profiling_enabled_ = false;
+}
+
 std::vector<float> MatchaBackend::synthesizeTokenIdsToAudio(
     const std::vector<int64_t>& token_ids,
     int* output_sample_rate) {
@@ -349,20 +584,36 @@ std::vector<float> MatchaBackend::synthesizeTokenIdsToAudio(
     }
 
     // 运行声学模型
+    auto acoustic_start = std::chrono::high_resolution_clock::now();
     std::vector<float> mel = runAcousticModel(final_tokens, current_speaker_, current_speed_);
+    auto acoustic_end = std::chrono::high_resolution_clock::now();
     if (mel.empty()) {
         return {};
     }
 
     // 运行声码器
+    auto vocoder_start = std::chrono::high_resolution_clock::now();
     std::vector<float> audio_samples = runVocoder(mel, mel_dim_);
+    auto vocoder_end = std::chrono::high_resolution_clock::now();
 
     // 重采样（如果需要）
+    auto resample_start = std::chrono::high_resolution_clock::now();
     if (config_.output_sample_rate > 0 && config_.output_sample_rate != sample_rate_) {
         audio_samples = audio::resampleAudio(audio_samples, sample_rate_, config_.output_sample_rate);
         if (output_sample_rate != nullptr) {
             *output_sample_rate = config_.output_sample_rate;
         }
+    }
+    auto resample_end = std::chrono::high_resolution_clock::now();
+
+    if (trace_enabled_) {
+        std::cout << "[TTS] model_timing acoustic_total_ms="
+                  << elapsedMs(acoustic_start, acoustic_end)
+                  << " vocoder_total_ms=" << elapsedMs(vocoder_start, vocoder_end)
+                  << " resample_ms=" << elapsedMs(resample_start, resample_end)
+                  << " mel_values=" << mel.size()
+                  << " audio_samples=" << audio_samples.size()
+                  << std::endl;
     }
 
     return audio_samples;
@@ -446,25 +697,25 @@ void MatchaBackend::createInternalConfig() {
     std::string model_dir = getModelDir();
     std::string subdir = getModelSubdir();
 
-    internal_config_.acoustic_model_path = model_dir + "/" + subdir + "/model-steps-3.onnx";
+    internal_config_.acoustic_model_path = model_dir + "/" + subdir + "/model-steps-3.q.onnx";
     internal_config_.tokens_path = model_dir + "/" + subdir + "/tokens.txt";
 
     if (type_ == BackendType::MATCHA_ZH) {
         internal_config_.language = "zh";
         internal_config_.lexicon_path = model_dir + "/" + subdir + "/lexicon.txt";
         internal_config_.dict_dir = model_dir + "/" + subdir + "/dict";
-        internal_config_.vocoder_path = model_dir + "/vocos-22khz-univ.onnx";
+        internal_config_.vocoder_path = model_dir + "/vocos-22khz-univ.q.onnx";
         sample_rate_ = 22050;
     } else if (type_ == BackendType::MATCHA_EN) {
         internal_config_.language = "en";
         internal_config_.lexicon_path = "";
-        internal_config_.vocoder_path = model_dir + "/vocos-22khz-univ.onnx";
+        internal_config_.vocoder_path = model_dir + "/vocos-22khz-univ.q.onnx";
         sample_rate_ = 22050;
     } else if (type_ == BackendType::MATCHA_ZH_EN) {
         internal_config_.language = "zh-en";
         internal_config_.tokens_path = model_dir + "/" + subdir + "/vocab_tts.txt";
         internal_config_.lexicon_path = "";
-        internal_config_.vocoder_path = model_dir + "/vocos-16khz-univ.onnx";
+        internal_config_.vocoder_path = model_dir + "/vocos-16khz-univ.q.onnx";
         sample_rate_ = 16000;
     }
 
@@ -582,15 +833,24 @@ std::vector<float> MatchaBackend::runAcousticModel(
     const char* output_names[] = {"mel"};
 
     std::lock_guard<std::mutex> lock(inference_mutex_);
+    auto run_start = std::chrono::high_resolution_clock::now();
     auto output_tensors = acoustic_model_->Run(
         Ort::RunOptions{nullptr},
         input_names, input_tensors.data(), 4,
         output_names, 1);
+    auto run_end = std::chrono::high_resolution_clock::now();
 
     float* mel_data = output_tensors[0].GetTensorMutableData<float>();
     auto mel_shape = output_tensors[0].GetTensorTypeAndShapeInfo().GetShape();
     size_t mel_size = std::accumulate(mel_shape.begin(), mel_shape.end(),
         static_cast<size_t>(1), std::multiplies<size_t>());
+
+    if (trace_enabled_) {
+        std::cout << "[TTS] acoustic_ort_ms=" << elapsedMs(run_start, run_end)
+                  << " input_tokens=" << tokens.size()
+                  << " mel_values=" << mel_size
+                  << std::endl;
+    }
 
     return std::vector<float>(mel_data, mel_data + mel_size);
 }
@@ -608,10 +868,12 @@ std::vector<float> MatchaBackend::runVocoder(const std::vector<float>& mel, int 
     const char* output_names[] = {"mag", "x", "y"};
 
     std::lock_guard<std::mutex> lock(inference_mutex_);
+    auto run_start = std::chrono::high_resolution_clock::now();
     auto output_tensors = vocoder_model_->Run(
         Ort::RunOptions{nullptr},
         input_names, &input_tensor, 1,
         output_names, 3);
+    auto run_end = std::chrono::high_resolution_clock::now();
 
     float* mag_data = output_tensors[0].GetTensorMutableData<float>();
     float* x_data = output_tensors[1].GetTensorMutableData<float>();
@@ -641,8 +903,10 @@ std::vector<float> MatchaBackend::runVocoder(const std::vector<float>& mel, int 
     istft_config.hop_length = istft_hop_length_;
     istft_config.win_length = istft_win_length_;
 
+    auto istft_start = std::chrono::high_resolution_clock::now();
     std::vector<float> audio = vocoder::istft(
         stft_real, stft_imag, vocoder_frames, n_fft_bins, istft_config);
+    auto istft_end = std::chrono::high_resolution_clock::now();
 
     // 应用音频后处理
     audio::AudioProcessConfig audio_config;
@@ -652,7 +916,19 @@ std::vector<float> MatchaBackend::runVocoder(const std::vector<float>& mel, int 
     audio_config.use_rms_norm = internal_config_.use_rms_norm;
     audio_config.remove_clicks = internal_config_.remove_clicks;
 
+    auto post_start = std::chrono::high_resolution_clock::now();
     audio = audio::processAudio(audio, audio_config);
+    auto post_end = std::chrono::high_resolution_clock::now();
+
+    if (trace_enabled_) {
+        std::cout << "[TTS] vocoder_timing ort_ms=" << elapsedMs(run_start, run_end)
+                  << " istft_ms=" << elapsedMs(istft_start, istft_end)
+                  << " post_ms=" << elapsedMs(post_start, post_end)
+                  << " frames=" << num_frames
+                  << " vocoder_frames=" << vocoder_frames
+                  << " audio_samples=" << audio.size()
+                  << std::endl;
+    }
 
     return audio;
 }

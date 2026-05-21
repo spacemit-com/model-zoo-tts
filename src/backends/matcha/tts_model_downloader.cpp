@@ -43,7 +43,7 @@ bool TTSModelDownloader::ensureModelsExist(const std::string& language) {
         // zh-en uses 16kHz vocoder
         std::string vocoder_path = getModelPath(VOCOS_VOCODER_16K);
         if (!fs::exists(vocoder_path)) {
-            std::string url = "https://archive.spacemit.com/spacemit-ai/model_zoo/tts/vocoder/vocos-16khz-univ.onnx";
+            std::string url = "https://archive.spacemit.com/spacemit-ai/model_zoo/tts/vocoder/vocos-16khz-univ.q.onnx";
             std::cout << "Downloading 16kHz vocoder from " << url << "..." << std::endl;
             if (!downloadFile(url, vocoder_path)) {
                 std::cerr << "Failed to download 16kHz vocoder" << std::endl;
@@ -60,6 +60,11 @@ bool TTSModelDownloader::ensureModelsExist(const std::string& language) {
                 std::cerr << "Failed to download Chinese-English bilingual TTS models" << std::endl;
                 return false;
             }
+        }
+        if (!fs::exists(model_path) || !fs::exists(tokens_path)) {
+            std::cerr << "Missing Chinese-English bilingual TTS files after download: "
+                      << MATCHA_ZH_EN_MODEL << std::endl;
+            return false;
         }
     } else {
         // zh and en use 22kHz vocoder
@@ -85,6 +90,12 @@ bool TTSModelDownloader::ensureModelsExist(const std::string& language) {
                     return false;
                 }
             }
+            if (!fs::exists(model_path) || !fs::exists(lexicon_path) ||
+                !fs::exists(tokens_path) || !fs::exists(dict_path)) {
+                std::cerr << "Missing Chinese TTS files after download: "
+                          << MATCHA_ZH_MODEL << std::endl;
+                return false;
+            }
         } else if (language == "en") {
             std::string model_path = getModelPath(MATCHA_EN_MODEL);
             std::string tokens_path = getModelPath(MATCHA_EN_TOKENS);
@@ -95,6 +106,11 @@ bool TTSModelDownloader::ensureModelsExist(const std::string& language) {
                     std::cerr << "Failed to download English TTS models" << std::endl;
                     return false;
                 }
+            }
+            if (!fs::exists(model_path) || !fs::exists(tokens_path) || !fs::exists(data_dir)) {
+                std::cerr << "Missing English TTS files after download: "
+                          << MATCHA_EN_MODEL << std::endl;
+                return false;
             }
         } else {
             std::cerr << "Unsupported language: " << language << std::endl;
@@ -216,7 +232,7 @@ bool TTSModelDownloader::extractTarGz(const std::string& archive_path, const std
 }
 
 bool TTSModelDownloader::downloadVocoder() {
-    std::string url = "https://archive.spacemit.com/spacemit-ai/model_zoo/tts/vocoder/vocos-22khz-univ.onnx";
+    std::string url = "https://archive.spacemit.com/spacemit-ai/model_zoo/tts/vocoder/vocos-22khz-univ.q.onnx";
     std::string dest_path = getModelPath(VOCOS_VOCODER);
 
     std::cout << "Downloading vocoder from " << url << "..." << std::endl;

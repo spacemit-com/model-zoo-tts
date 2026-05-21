@@ -12,7 +12,7 @@ Basic Usage:
     >>> result.save("output.wav")
     >>>
     >>> # With configuration
-    >>> config = spacemit_tts.Config.preset("matcha_zh")
+    >>> config = spacemit_tts.Config.preset("matcha_zh_en")
     >>> engine = spacemit_tts.Engine(config)
     >>>
     >>> # Streaming synthesis
