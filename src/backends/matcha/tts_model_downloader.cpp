@@ -63,7 +63,7 @@ bool TTSModelDownloader::ensureModelsExist(const std::string& language) {
         }
         if (!fs::exists(model_path) || !fs::exists(tokens_path)) {
             std::cerr << "Missing Chinese-English bilingual TTS files after download: "
-                      << MATCHA_ZH_EN_MODEL << std::endl;
+                << MATCHA_ZH_EN_MODEL << std::endl;
             return false;
         }
     } else {
@@ -93,7 +93,7 @@ bool TTSModelDownloader::ensureModelsExist(const std::string& language) {
             if (!fs::exists(model_path) || !fs::exists(lexicon_path) ||
                 !fs::exists(tokens_path) || !fs::exists(dict_path)) {
                 std::cerr << "Missing Chinese TTS files after download: "
-                          << MATCHA_ZH_MODEL << std::endl;
+                    << MATCHA_ZH_MODEL << std::endl;
                 return false;
             }
         } else if (language == "en") {
@@ -109,7 +109,7 @@ bool TTSModelDownloader::ensureModelsExist(const std::string& language) {
             }
             if (!fs::exists(model_path) || !fs::exists(tokens_path) || !fs::exists(data_dir)) {
                 std::cerr << "Missing English TTS files after download: "
-                          << MATCHA_EN_MODEL << std::endl;
+                    << MATCHA_EN_MODEL << std::endl;
                 return false;
             }
         } else {

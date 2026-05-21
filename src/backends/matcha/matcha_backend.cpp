@@ -72,7 +72,7 @@ std::string normalizeProvider(const std::string& provider, const std::string& so
     }
 
     std::cerr << "[TTS] Unsupported provider '" << provider << "' from " << source
-              << ", fallback to auto" << std::endl;
+        << ", fallback to auto" << std::endl;
     return "auto";
 }
 
@@ -141,7 +141,7 @@ int getEnvInt(const char* name, int default_value) {
 }
 
 int64_t elapsedMs(std::chrono::high_resolution_clock::time_point begin,
-                  std::chrono::high_resolution_clock::time_point end) {
+    std::chrono::high_resolution_clock::time_point end) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
 }
 }  // namespace
@@ -185,12 +185,12 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
     if (!isSpacemitEpAvailable()) {
         if (acoustic_provider == "spacemit") {
             std::cerr << "[TTS] SpaceMIT EP requested for acoustic but this binary was built"
-                      << " without USE_SPACEMIT_EP, fallback to CPU" << std::endl;
+                << " without USE_SPACEMIT_EP, fallback to CPU" << std::endl;
             acoustic_provider = "cpu";
         }
         if (vocoder_provider == "spacemit") {
             std::cerr << "[TTS] SpaceMIT EP requested for vocoder but this binary was built"
-                      << " without USE_SPACEMIT_EP, fallback to CPU" << std::endl;
+                << " without USE_SPACEMIT_EP, fallback to CPU" << std::endl;
             vocoder_provider = "cpu";
         }
     }
@@ -221,8 +221,8 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
         const int ep_threads = getEnvInt("SPACEMIT_TTS_EP_THREADS", 3);
 
         auto configureSessionOptions = [&](Ort::SessionOptions& options,
-                                           const std::string& profile_name,
-                                           const std::string& requested_provider) {
+            const std::string& profile_name,
+            const std::string& requested_provider) {
             bool use_spacemit_ep = (requested_provider == "spacemit");
             std::string actual_provider = use_spacemit_ep ? "spacemit" : "cpu";
             options.SetIntraOpNumThreads(use_spacemit_ep ? 1 : cpu_threads);
@@ -236,11 +236,11 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
                 Ort::Status status = Ort::SessionOptionsSpaceMITEnvInit(options, ep_options);
                 if (status.IsOK()) {
                     std::cout << "[TTS] SpaceMIT EP initialized for " << profile_name
-                              << " (threads=" << ep_threads << ")" << std::endl;
+                        << " (threads=" << ep_threads << ")" << std::endl;
                 } else {
                     std::cerr << "[TTS] SpaceMIT EP init failed for " << profile_name
-                              << ": " << status.GetErrorMessage()
-                              << ", fallback to CPU" << std::endl;
+                        << ": " << status.GetErrorMessage()
+                        << ", fallback to CPU" << std::endl;
                     actual_provider = "cpu";
                     use_spacemit_ep = false;
                     options.SetIntraOpNumThreads(cpu_threads);
@@ -249,8 +249,8 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
 #else
             if (use_spacemit_ep) {
                 std::cerr << "[TTS] SpaceMIT EP requested for " << profile_name
-                          << " but this binary was built without USE_SPACEMIT_EP"
-                          << std::endl;
+                    << " but this binary was built without USE_SPACEMIT_EP"
+                    << std::endl;
                 actual_provider = "cpu";
                 use_spacemit_ep = false;
                 options.SetIntraOpNumThreads(cpu_threads);
@@ -279,12 +279,12 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
 
         if (trace_enabled_) {
             std::cout << "[TTS] provider=" << normalizeProvider(config.provider, "config.provider")
-                      << " acoustic_provider=" << acoustic_provider
-                      << " vocoder_provider=" << vocoder_provider
-                      << " cpu_threads=" << cpu_threads
-                      << " ep_threads=" << ep_threads
-                      << " profile_prefix=" << (ort_profiling_enabled_ ? ort_profile_prefix_ : "")
-                      << std::endl;
+                << " acoustic_provider=" << acoustic_provider
+                << " vocoder_provider=" << vocoder_provider
+                << " cpu_threads=" << cpu_threads
+                << " ep_threads=" << ep_threads
+                << " profile_prefix=" << (ort_profiling_enabled_ ? ort_profile_prefix_ : "")
+                << std::endl;
         }
 
         // 加载声学模型
@@ -437,13 +437,13 @@ ErrorInfo MatchaBackend::synthesize(const std::string& text, SynthesisResult& re
 
         if (trace_enabled_) {
             std::cout << "[TTS] synth_timing normalize_ms="
-                      << elapsedMs(normalize_start, normalize_end)
-                      << " text_to_tokens_ms=" << elapsedMs(tokens_start, tokens_end)
-                      << " acoustic_vocoder_audio_ms=" << elapsedMs(audio_start, audio_end)
-                      << " total_ms=" << duration.count()
-                      << " token_count=" << token_ids.size()
-                      << " audio_samples=" << audio_samples.size()
-                      << std::endl;
+                << elapsedMs(normalize_start, normalize_end)
+                << " text_to_tokens_ms=" << elapsedMs(tokens_start, tokens_end)
+                << " acoustic_vocoder_audio_ms=" << elapsedMs(audio_start, audio_end)
+                << " total_ms=" << duration.count()
+                << " token_count=" << token_ids.size()
+                << " audio_samples=" << audio_samples.size()
+                << std::endl;
         }
 
         // 填充结果
@@ -552,11 +552,11 @@ void MatchaBackend::endOrtProfiling() {
             auto profile_path = session->EndProfilingAllocated(allocator);
             if (profile_path && profile_path.get() && profile_path.get()[0] != '\0') {
                 std::cout << "[TTS] ORT profile " << label << ": "
-                          << profile_path.get() << std::endl;
+                    << profile_path.get() << std::endl;
             }
         } catch (const std::exception& e) {
             std::cerr << "[TTS] EndProfiling failed for " << label
-                      << ": " << e.what() << std::endl;
+                << ": " << e.what() << std::endl;
         }
     };
 
@@ -608,12 +608,12 @@ std::vector<float> MatchaBackend::synthesizeTokenIdsToAudio(
 
     if (trace_enabled_) {
         std::cout << "[TTS] model_timing acoustic_total_ms="
-                  << elapsedMs(acoustic_start, acoustic_end)
-                  << " vocoder_total_ms=" << elapsedMs(vocoder_start, vocoder_end)
-                  << " resample_ms=" << elapsedMs(resample_start, resample_end)
-                  << " mel_values=" << mel.size()
-                  << " audio_samples=" << audio_samples.size()
-                  << std::endl;
+            << elapsedMs(acoustic_start, acoustic_end)
+            << " vocoder_total_ms=" << elapsedMs(vocoder_start, vocoder_end)
+            << " resample_ms=" << elapsedMs(resample_start, resample_end)
+            << " mel_values=" << mel.size()
+            << " audio_samples=" << audio_samples.size()
+            << std::endl;
     }
 
     return audio_samples;
@@ -847,9 +847,9 @@ std::vector<float> MatchaBackend::runAcousticModel(
 
     if (trace_enabled_) {
         std::cout << "[TTS] acoustic_ort_ms=" << elapsedMs(run_start, run_end)
-                  << " input_tokens=" << tokens.size()
-                  << " mel_values=" << mel_size
-                  << std::endl;
+            << " input_tokens=" << tokens.size()
+            << " mel_values=" << mel_size
+            << std::endl;
     }
 
     return std::vector<float>(mel_data, mel_data + mel_size);
@@ -922,12 +922,12 @@ std::vector<float> MatchaBackend::runVocoder(const std::vector<float>& mel, int 
 
     if (trace_enabled_) {
         std::cout << "[TTS] vocoder_timing ort_ms=" << elapsedMs(run_start, run_end)
-                  << " istft_ms=" << elapsedMs(istft_start, istft_end)
-                  << " post_ms=" << elapsedMs(post_start, post_end)
-                  << " frames=" << num_frames
-                  << " vocoder_frames=" << vocoder_frames
-                  << " audio_samples=" << audio.size()
-                  << std::endl;
+            << " istft_ms=" << elapsedMs(istft_start, istft_end)
+            << " post_ms=" << elapsedMs(post_start, post_end)
+            << " frames=" << num_frames
+            << " vocoder_frames=" << vocoder_frames
+            << " audio_samples=" << audio.size()
+            << std::endl;
     }
 
     return audio;
