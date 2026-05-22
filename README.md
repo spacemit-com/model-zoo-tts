@@ -87,7 +87,7 @@ mm
 **C++ 简单合成：**
 ```bash
 tts_file_demo
-tts_file_demo -p "你好世界" -l matcha:zh
+tts_file_demo -p "你好世界" -l matcha:zh-en
 ```
 
 **Python 文件合成**（需已安装 Python 包或设置 PYTHONPATH 指向 SDK 构建产物）：
@@ -120,7 +120,7 @@ mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
 ./bin/tts_file_demo
-./bin/tts_file_demo -p "你好世界" -l matcha:zh
+./bin/tts_file_demo -p "你好世界" -l matcha:zh-en
 ```
 
 **Python 文件合成：**
@@ -154,7 +154,7 @@ python python/examples/tts_file_demo.py
 #include "tts_service.h"
 using namespace SpacemiT;
 
-TtsConfig config = TtsConfig::Preset("matcha_zh");
+TtsConfig config = TtsConfig::Preset("matcha_zh_en");
 config.speech_rate = 1.2f;
 auto engine = std::make_shared<TtsEngine>(config);
 

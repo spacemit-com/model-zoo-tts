@@ -78,23 +78,26 @@ class Config:
     TTS Configuration
 
     Example:
-        >>> config = Config.preset("matcha_zh")
+        >>> config = Config.preset("matcha_zh_en")
         >>> config.speech_rate = 1.2
         >>> config.volume = 80
     """
 
-    def __init__(self, backend: BackendType = BackendType.MATCHA_ZH,
-                 model_dir: str = "~/.cache/models/tts/matcha-tts"):
+    def __init__(self, backend: BackendType = BackendType.MATCHA_ZH_EN,
+                 model_dir: str = "~/.cache/models/tts/matcha-tts",
+                 provider: str = "auto"):
         """
         Create TTS configuration
 
         Args:
-            backend: Backend type (default: MATCHA_ZH)
+            backend: Backend type (default: MATCHA_ZH_EN)
             model_dir: Model directory path
+            provider: Inference provider policy: auto, cpu, spacemit
         """
         self._config = _tts.TtsConfig()
         self._config.backend = backend.to_native()
         self._config.model_dir = str(Path(model_dir).expanduser())
+        self._config.provider = provider
 
     @staticmethod
     def preset(name: str) -> "Config":
@@ -154,6 +157,15 @@ class Config:
     def pitch(self, value: float):
         self._config.pitch = value
 
+    @property
+    def provider(self) -> str:
+        """Provider for all models: auto, cpu, spacemit"""
+        return self._config.provider
+
+    @provider.setter
+    def provider(self, value: str):
+        self._config.provider = value
+
     # Builder methods (chainable)
     def with_speed(self, speed: float) -> "Config":
         """
@@ -194,8 +206,14 @@ class Config:
         self._config = self._config.withVolume(volume)
         return self
 
+    def with_provider(self, provider: str) -> "Config":
+        """Set inference provider policy: auto, cpu, spacemit"""
+        self._config = self._config.withProvider(provider)
+        return self
+
     def __repr__(self) -> str:
         return (f"<Config backend={self._config.backend} "
+                f"provider={self.provider} "
                 f"sample_rate={self.sample_rate}Hz "
                 f"speech_rate={self.speech_rate:.2f}>")
 

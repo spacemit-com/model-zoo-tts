@@ -27,8 +27,8 @@ public:
         "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main";
 
     // Model files
-    static constexpr const char* MODEL_URL_PATH = "onnx/model.onnx";  // Remote path (FP32)
-    static constexpr const char* MODEL_FILE = "kokoro-v1.0.onnx";     // Local filename
+    static constexpr const char* MODEL_URL_PATH = "onnx/model_quantized.onnx";  // Remote quantized model
+    static constexpr const char* MODEL_FILE = "kokoro-v1.0.q.onnx";             // Local filename
     static constexpr const char* DEFAULT_VOICE = "zf_xiaobei.bin";
 
     KokoroModelDownloader();

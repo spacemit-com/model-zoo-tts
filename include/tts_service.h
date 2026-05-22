@@ -64,16 +64,16 @@ struct PronunciationEntry {
 // TtsConfig
 // -----------------------------------------------------------------------------
 
-// 引擎配置，可用 Preset("matcha_zh") 等创建。
+// 引擎配置，可用 Preset("matcha_zh_en") 等创建。
 struct TtsConfig {
-    BackendType backend = BackendType::MATCHA_ZH;
+    BackendType backend = BackendType::MATCHA_ZH_EN;
     std::string model;
     std::string model_dir;
     std::string voice = "default";
     int speaker_id = 0;
 
     AudioFormat format = AudioFormat::WAV;
-    int sample_rate = 22050;
+    int sample_rate = 16000;
     int volume = 50;
 
     float speech_rate = 1.0f;
@@ -86,6 +86,7 @@ struct TtsConfig {
 
     int num_threads = 2;
     bool enable_warmup = true;
+    std::string provider = "auto";           // auto, cpu, spacemit
 
     std::vector<PronunciationEntry> lexicon;
 
@@ -108,6 +109,12 @@ struct TtsConfig {
     TtsConfig withVolume(int vol) const {
         auto c = *this;
         c.volume = vol;
+        return c;
+    }
+
+    TtsConfig withProvider(const std::string& value) const {
+        auto c = *this;
+        c.provider = value;
         return c;
     }
 };
@@ -189,7 +196,7 @@ public:
     };
 
     explicit TtsEngine(
-            BackendType backend = BackendType::MATCHA_ZH,
+            BackendType backend = BackendType::MATCHA_ZH_EN,
             const std::string& model_dir = "");
     explicit TtsEngine(const TtsConfig& config);
     virtual ~TtsEngine();

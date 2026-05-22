@@ -11,7 +11,7 @@ from .engine import Engine, Config, BackendType, Result
 
 
 def synthesize(text: str,
-               backend: BackendType = BackendType.MATCHA_ZH,
+               backend: BackendType = BackendType.MATCHA_ZH_EN,
                model_dir: str = "~/.cache/models/tts/matcha-tts") -> Result:
     """
     Quick text-to-speech synthesis
@@ -20,7 +20,7 @@ def synthesize(text: str,
 
     Args:
         text: Text to synthesize
-        backend: TTS backend type (default: MATCHA_ZH)
+        backend: TTS backend type (default: MATCHA_ZH_EN)
         model_dir: Model directory path
 
     Returns:
@@ -40,7 +40,7 @@ def synthesize(text: str,
 
 def synthesize_to_file(text: str,
                        file_path: Union[str, Path],
-                       backend: BackendType = BackendType.MATCHA_ZH,
+                       backend: BackendType = BackendType.MATCHA_ZH_EN,
                        model_dir: str = "~/.cache/models/tts/matcha-tts") -> bool:
     """
     Quick synthesis directly to file
@@ -50,7 +50,7 @@ def synthesize_to_file(text: str,
     Args:
         text: Text to synthesize
         file_path: Output file path
-        backend: TTS backend type (default: MATCHA_ZH)
+        backend: TTS backend type (default: MATCHA_ZH_EN)
         model_dir: Model directory path
 
     Returns:
@@ -71,7 +71,7 @@ def synthesize_to_file(text: str,
 
 def synthesize_batch(texts: list[str],
                      output_dir: Union[str, Path],
-                     backend: BackendType = BackendType.MATCHA_ZH,
+                     backend: BackendType = BackendType.MATCHA_ZH_EN,
                      model_dir: str = "~/.cache/models/tts/matcha-tts",
                      prefix: str = "output") -> list[Path]:
     """

@@ -23,6 +23,22 @@
 
 namespace fs = std::filesystem;
 
+namespace {
+
+std::vector<float> smoothNarrowImpulses(const std::vector<float>& audio) {
+    if (audio.size() < 3) {
+        return audio;
+    }
+
+    std::vector<float> smoothed(audio);
+    for (size_t i = 1; i + 1 < audio.size(); ++i) {
+        smoothed[i] = 0.25f * audio[i - 1] + 0.5f * audio[i] + 0.25f * audio[i + 1];
+    }
+    return smoothed;
+}
+
+}  // namespace
+
 namespace tts {
 
 // =============================================================================
@@ -220,6 +236,9 @@ ErrorInfo KokoroBackend::synthesize(const std::string& text, SynthesisResult& re
         audio_config.remove_clicks = config_.remove_clicks;
 
         audio_samples = audio::processAudio(audio_samples, audio_config);
+        if (config_.remove_clicks) {
+            audio_samples = smoothNarrowImpulses(audio_samples);
+        }
 
         // Record timing
         auto end_time = std::chrono::high_resolution_clock::now();

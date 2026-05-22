@@ -46,7 +46,7 @@ static const std::map<std::string, std::function<TtsConfig()>>& getPublicPresets
         {"kokoro", []() {
             TtsConfig config;
             config.backend = BackendType::KOKORO;
-            config.model = "kokoro-v1.0";
+            config.model = "kokoro-v1.0.q";
             config.model_dir = "~/.cache/models/tts/kokoro-tts";
             config.voice = "default";
             config.sample_rate = 24000;

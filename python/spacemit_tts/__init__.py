@@ -12,7 +12,7 @@ Basic Usage:
     >>> result.save("output.wav")
     >>>
     >>> # With configuration
-    >>> config = spacemit_tts.Config.preset("matcha_zh")
+    >>> config = spacemit_tts.Config.preset("matcha_zh_en")
     >>> engine = spacemit_tts.Engine(config)
     >>>
     >>> # Streaming synthesis
@@ -34,7 +34,7 @@ from .engine import Engine, Config, Result, BackendType, AudioFormat
 from .callback import TtsCallback, PrintCallback, SaveCallback, CollectCallback
 from .utils import synthesize, synthesize_to_file
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 __author__ = "muggle"
 __all__ = [
     "Engine",

@@ -11,7 +11,6 @@
 #include <cmath>
 #include <iostream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "text/phoneme_utils.hpp"
@@ -388,12 +387,11 @@ void MatchaEnBackend::smoothSegmentBoundary(
 
     for (size_t i = 0; i < fade_samples; ++i) {
         float t = static_cast<float>(i) / static_cast<float>(fade_samples);
-        float fade_in = 0.5f * (1.0f - std::cos(static_cast<float>(kPi) * t));
-        (*audio)[i] *= fade_in;
+        float fade = 0.5f * (1.0f - std::cos(static_cast<float>(kPi) * t));
+        (*audio)[i] *= fade;
 
         size_t tail_idx = audio->size() - 1 - i;
-        float fade_out = 0.5f * (1.0f - std::cos(static_cast<float>(kPi) * t));
-        (*audio)[tail_idx] *= fade_out;
+        (*audio)[tail_idx] *= fade;
     }
 }
 

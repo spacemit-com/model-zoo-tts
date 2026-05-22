@@ -170,6 +170,7 @@ PYBIND11_MODULE(_spacemit_tts, m) {
         .def_readwrite("remove_clicks", &SpacemiT::TtsConfig::remove_clicks, "Remove clicks")
         .def_readwrite("num_threads", &SpacemiT::TtsConfig::num_threads, "Number of inference threads")
         .def_readwrite("enable_warmup", &SpacemiT::TtsConfig::enable_warmup, "Enable warmup on startup")
+        .def_readwrite("provider", &SpacemiT::TtsConfig::provider, "Provider: auto, cpu, spacemit")
         .def_readwrite("lexicon", &SpacemiT::TtsConfig::lexicon, "Custom pronunciation lexicon")
 
         // 静态工厂方法
@@ -189,11 +190,15 @@ PYBIND11_MODULE(_spacemit_tts, m) {
         .def("withVolume", &SpacemiT::TtsConfig::withVolume,
             py::arg("vol"),
             "Set volume (chainable)")
+        .def("withProvider", &SpacemiT::TtsConfig::withProvider,
+            py::arg("provider"),
+            "Set provider: auto, cpu, spacemit (chainable)")
 
         // 字符串表示
         .def("__repr__", [](const SpacemiT::TtsConfig& config) {
             return "<TtsConfig backend=" + std::to_string(static_cast<int>(config.backend)) +
                 " model='" + config.model + "'" +
+                " provider='" + config.provider + "'" +
                 " sample_rate=" + std::to_string(config.sample_rate) + ">";
         });
 
@@ -302,7 +307,7 @@ PYBIND11_MODULE(_spacemit_tts, m) {
     py::class_<SpacemiT::TtsEngine>(m, "TtsEngine", "TTS Engine - Main synthesis interface")
         // 构造函数
         .def(py::init<SpacemiT::BackendType, const std::string&>(),
-            py::arg("backend") = SpacemiT::BackendType::MATCHA_ZH,
+            py::arg("backend") = SpacemiT::BackendType::MATCHA_ZH_EN,
             py::arg("model_dir") = "",
             "Create TTS engine with backend type")
         .def(py::init<const SpacemiT::TtsConfig&>(),
@@ -382,7 +387,7 @@ PYBIND11_MODULE(_spacemit_tts, m) {
     // 模块级属性
     // =========================================================================
 
-    m.attr("__version__") = "1.0.2";
+    m.attr("__version__") = "1.0.3";
     m.attr("__author__") = "muggle";
     m.attr("__doc__") = "SpaceTTS - Text-To-Speech Engine Python bindings";
 }

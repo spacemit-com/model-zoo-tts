@@ -4,6 +4,7 @@
 #ifndef MATCHA_EN_BACKEND_HPP
 #define MATCHA_EN_BACKEND_HPP
 
+#include <cstddef>
 #include <cstdint>
 
 #include <string>

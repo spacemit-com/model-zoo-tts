@@ -126,6 +126,27 @@ else()
     endif()
 endif()
 
+option(USE_SPACEMIT_EP "Enable SpaceMIT Execution Provider for TTS when requested at runtime" ON)
+if(USE_SPACEMIT_EP)
+    find_path(SPACEMIT_ORT_INCLUDE_DIR
+        NAMES spacemit_ort_env.h
+        PATHS ${ONNXRUNTIME_INCLUDE_DIR} /usr/include /usr/local/include
+        PATH_SUFFIXES onnxruntime
+    )
+    find_library(SPACEMIT_EP_LIB
+        NAMES spacemit_ep
+        PATHS /usr/local/lib /usr/lib
+    )
+    if(SPACEMIT_ORT_INCLUDE_DIR AND SPACEMIT_EP_LIB)
+        target_compile_definitions(tts PRIVATE USE_SPACEMIT_EP)
+        target_include_directories(tts PRIVATE ${SPACEMIT_ORT_INCLUDE_DIR})
+        target_link_libraries(tts PUBLIC ${SPACEMIT_EP_LIB})
+        message(STATUS "[tts] SpaceMIT EP enabled: ${SPACEMIT_ORT_INCLUDE_DIR}, lib: ${SPACEMIT_EP_LIB}")
+    else()
+        message(WARNING "[tts] SpaceMIT EP not found (header=${SPACEMIT_ORT_INCLUDE_DIR}, lib=${SPACEMIT_EP_LIB}), USE_SPACEMIT_EP ignored")
+    endif()
+endif()
+
 # FFTW3 (for audio processing)
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
