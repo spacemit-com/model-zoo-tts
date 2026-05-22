@@ -213,13 +213,15 @@ target_include_directories(your_target PRIVATE ${TTS_SOURCE_DIR}/include)
 
 ## 8. 附录：性能指标
 
-以下数据基于 K3 平台（2 线程推理）实测，为阶段性信息，持续优化中，请以最新文档为准。
+以下数据基于 K3-198 平台当前构建（`feat/tts-quantized-models`，量化模型，`tts_file_demo --provider auto`）实测。每项运行 3 次，表中取 RTF 中位数对应结果；引擎初始化与 warmup 不计入处理时间。
+
+默认 provider 路由：`matcha:zh` / `matcha:en` 使用 SpaceMIT EP 跑声学模型、CPU 跑 vocoder；`matcha:zh-en` 使用 CPU 跑声学模型和 vocoder；Kokoro 当前使用 CPU 路径。
 
 | 后端 | 测试文本 | 音频时长 | 处理时间 | RTF |
 |------|----------|----------|----------|-----|
-| MATCHA_ZH | "这是一个语音合成测试" | 2426ms | 1183ms | 0.49 |
-| MATCHA_EN | "Hello, world" | 731ms | 440ms | 0.60 |
-| MATCHA_ZH_EN | "今天学Python" | 1920ms | 715ms | 0.37 |
-| KOKORO | "你好" | 2075ms | 13814ms | 6.66 |
+| MATCHA_ZH | "这是一个语音合成测试" | 2565ms | 575ms | 0.22 |
+| MATCHA_EN | "This is a longer English speech synthesis benchmark sentence for measuring real time factor on the K3 platform." | 6873ms | 1608ms | 0.23 |
+| MATCHA_ZH_EN | "今天学Python" | 1920ms | 542ms | 0.28 |
+| KOKORO | "你好" | 2075ms | 6582ms | 3.17 |
 
-测试命令：`./build/bin/tts_file_demo -p "<text>" -l <engine>`
+测试命令：`tts_file_demo -p "<text>" -l <engine> --provider auto`
