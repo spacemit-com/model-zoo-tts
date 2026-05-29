@@ -1,0 +1,20 @@
+module: components/model_zoo/tts
+
+tests:
+  - name: tts-config-contract
+    description: Verifies TTS presets, config builders, validation, and audio chunk conversion without loading models.
+    category: functional
+    scopes: [pr]
+    timeout_s: 120
+    workdir: sdk
+    command: |
+      bash components/model_zoo/tts/tests/test_config_contract.sh
+
+  - name: tts-invalid-input-error-path
+    description: Verifies unknown presets, invalid configs, and empty audio save errors return explicit failures.
+    category: functional
+    scopes: [pr]
+    timeout_s: 120
+    workdir: sdk
+    command: |
+      bash components/model_zoo/tts/tests/test_invalid_input_error_path.sh
