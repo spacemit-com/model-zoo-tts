@@ -213,7 +213,7 @@ target_include_directories(your_target PRIVATE ${TTS_SOURCE_DIR}/include)
 
 ## 8. 附录：性能指标
 
-以下数据基于 K3-198 平台当前构建（`feat/tts-quantized-models`，量化模型，`tts_file_demo --provider auto`）实测。每项运行 3 次，表中取 RTF 中位数对应结果；引擎初始化与 warmup 不计入处理时间。
+以下数据基于 K3 平台量化模型构建（`tts_file_demo --provider auto`）实测。每项运行 3 次，表中取 RTF 中位数对应结果；引擎初始化与 warmup 不计入处理时间。
 
 默认 provider 路由：`matcha:zh` / `matcha:en` 使用 SpaceMIT EP 跑声学模型、CPU 跑 vocoder；`matcha:zh-en` 使用 CPU 跑声学模型和 vocoder；Kokoro 当前使用 CPU 路径。
 
