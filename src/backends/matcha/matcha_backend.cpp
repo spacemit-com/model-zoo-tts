@@ -918,6 +918,13 @@ std::vector<float> MatchaBackend::runVocoder(const std::vector<float>& mel, int 
 
     auto post_start = std::chrono::high_resolution_clock::now();
     audio = audio::processAudio(audio, audio_config);
+    if (type_ == BackendType::MATCHA_EN && internal_config_.use_rms_norm) {
+        audio::AudioProcessConfig post_rms_config;
+        post_rms_config.target_rms = internal_config_.target_rms;
+        post_rms_config.use_rms_norm = true;
+        post_rms_config.max_gain = 6.0f;
+        audio = audio::normalizeRmsLevel(audio, post_rms_config);
+    }
     auto post_end = std::chrono::high_resolution_clock::now();
 
     if (trace_enabled_) {

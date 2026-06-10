@@ -57,6 +57,41 @@ std::vector<float> applyCompression(const std::vector<float>& audio,
 // 音频归一化
 // =============================================================================
 
+std::vector<float> normalizeRmsLevel(const std::vector<float>& audio,
+    const AudioProcessConfig& config) {
+    if (audio.empty() || !config.use_rms_norm) return audio;
+
+    std::vector<float> processed(audio.begin(), audio.end());
+
+    // RMS normalization for consistent perceived loudness.
+    float current_rms = calculateRMS(processed);
+    if (current_rms <= 0.0f) {
+        return processed;
+    }
+
+    float scale = config.target_rms / current_rms;
+
+    // Apply soft limiting to prevent noise amplification.
+    const float max_gain = (config.max_gain > 0.0f) ? config.max_gain : 3.0f;
+    scale = std::min(scale, max_gain);
+
+    for (float& sample : processed) {
+        sample *= scale;
+    }
+
+    // Soft clipping to prevent harsh distortion.
+    for (float& sample : processed) {
+        if (std::abs(sample) > 0.95f) {
+            float sign = (sample < 0) ? -1.0f : 1.0f;
+            float abs_val = std::abs(sample);
+            // Soft knee compression near clipping.
+            sample = sign * (0.95f + 0.05f * std::tanh((abs_val - 0.95f) * 20.0f));
+        }
+    }
+
+    return processed;
+}
+
 std::vector<float> normalizeAudio(const std::vector<float>& audio,
     const AudioProcessConfig& config) {
     if (audio.empty()) return audio;
@@ -71,29 +106,7 @@ std::vector<float> normalizeAudio(const std::vector<float>& audio,
 
     // Step 2: Apply normalization
     if (config.use_rms_norm) {
-        // RMS normalization for consistent perceived loudness
-        float current_rms = calculateRMS(processed);
-        if (current_rms > 0.0f) {
-            float scale = config.target_rms / current_rms;
-
-            // Apply soft limiting to prevent noise amplification
-            const float max_scale = 3.0f;
-            scale = std::min(scale, max_scale);
-
-            for (float& sample : processed) {
-                sample *= scale;
-            }
-
-            // Soft clipping to prevent harsh distortion
-            for (float& sample : processed) {
-                if (std::abs(sample) > 0.95f) {
-                    float sign = (sample < 0) ? -1.0f : 1.0f;
-                    float abs_val = std::abs(sample);
-                    // Soft knee compression near clipping
-                    sample = sign * (0.95f + 0.05f * std::tanh((abs_val - 0.95f) * 20.0f));
-                }
-            }
-        }
+        processed = normalizeRmsLevel(processed, config);
     } else {
         // Fallback to peak normalization
         float max_amplitude = 0.0f;
