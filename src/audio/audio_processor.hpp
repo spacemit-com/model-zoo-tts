@@ -25,6 +25,7 @@ struct AudioProcessConfig {
     // RMS 归一化
     float target_rms = 0.15f;           ///< 目标 RMS 电平
     bool use_rms_norm = true;           ///< 是否使用 RMS 归一化
+    float max_gain = 3.0f;              ///< 最大增益倍数，非正值按默认 3.0f 处理
 
     // 动态压缩
     float compression_ratio = 2.0f;     ///< 压缩比
@@ -60,6 +61,16 @@ float calculateRMS(const std::vector<float>& audio);
 std::vector<float> applyCompression(const std::vector<float>& audio,
                                     float threshold,
                                     float ratio);
+
+/**
+ * @brief 应用 RMS 响度归一化，不做动态压缩
+ * @param audio 输入音频
+ * @param config 处理配置
+ * @return 归一化后的音频
+ */
+std::vector<float> normalizeRmsLevel(
+        const std::vector<float>& audio,
+        const AudioProcessConfig& config);
 
 /**
  * @brief 音频归一化 (RMS 或峰值归一化)
