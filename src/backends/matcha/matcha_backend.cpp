@@ -144,6 +144,28 @@ int64_t elapsedMs(std::chrono::high_resolution_clock::time_point begin,
     std::chrono::high_resolution_clock::time_point end) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
 }
+
+constexpr size_t kMaxMatchaAcousticTokens = 1000;
+constexpr size_t kMaxEpAcousticTokens = 512;
+constexpr size_t kBlankModelTokenChunkSize = 450;
+constexpr size_t kPlainModelTokenChunkSize = 900;
+
+size_t getMaxRawTokensPerAcousticRun(bool uses_blank_tokens) {
+    if (uses_blank_tokens) {
+        return (kMaxMatchaAcousticTokens - 1) / 2;
+    }
+    return kMaxMatchaAcousticTokens;
+}
+
+size_t getTargetRawTokensPerAcousticRun(bool uses_blank_tokens) {
+    const size_t hard_limit = getMaxRawTokensPerAcousticRun(uses_blank_tokens);
+    const size_t target = uses_blank_tokens ? kBlankModelTokenChunkSize : kPlainModelTokenChunkSize;
+    return std::min(target, hard_limit);
+}
+
+bool shouldUseCpuFallbackForAcoustic(size_t acoustic_tokens) {
+    return acoustic_tokens > kMaxEpAcousticTokens;
+}
 }  // namespace
 
 namespace tts {
@@ -291,6 +313,13 @@ ErrorInfo MatchaBackend::initialize(const TtsConfig& config) {
         acoustic_model_ = std::make_unique<Ort::Session>(
             *env_, internal_config_.acoustic_model_path.c_str(), acoustic_options);
 
+        if (acoustic_provider == "spacemit") {
+            Ort::SessionOptions acoustic_cpu_options;
+            configureSessionOptions(acoustic_cpu_options, "acoustic_cpu_fallback", "cpu");
+            acoustic_cpu_fallback_model_ = std::make_unique<Ort::Session>(
+                *env_, internal_config_.acoustic_model_path.c_str(), acoustic_cpu_options);
+        }
+
         // 加载声码器模型
         vocoder_model_ = std::make_unique<Ort::Session>(
             *env_, internal_config_.vocoder_path.c_str(), vocoder_options);
@@ -332,6 +361,7 @@ void MatchaBackend::shutdown() {
         endOrtProfiling();
         shutdownLanguageSpecific();
         acoustic_model_.reset();
+        acoustic_cpu_fallback_model_.reset();
         vocoder_model_.reset();
         env_.reset();
         token_to_id_.clear();
@@ -561,6 +591,7 @@ void MatchaBackend::endOrtProfiling() {
     };
 
     endProfile("acoustic", acoustic_model_);
+    endProfile("acoustic_cpu_fallback", acoustic_cpu_fallback_model_);
     endProfile("vocoder", vocoder_model_);
     ort_profiling_enabled_ = false;
 }
@@ -575,48 +606,107 @@ std::vector<float> MatchaBackend::synthesizeTokenIdsToAudio(
         return {};
     }
 
-    // 添加 blank tokens (根据后端类型)
-    std::vector<int64_t> final_tokens;
-    if (usesBlankTokens()) {
-        final_tokens = addBlankTokens(token_ids);
-    } else {
-        final_tokens = token_ids;
-    }
+    const bool insert_blank_tokens = usesBlankTokens();
+    const size_t hard_raw_limit = getMaxRawTokensPerAcousticRun(insert_blank_tokens);
+    const size_t chunk_raw_limit = getTargetRawTokensPerAcousticRun(insert_blank_tokens);
 
-    // 运行声学模型
-    auto acoustic_start = std::chrono::high_resolution_clock::now();
-    std::vector<float> mel = runAcousticModel(final_tokens, current_speaker_, current_speed_);
-    auto acoustic_end = std::chrono::high_resolution_clock::now();
-    if (mel.empty()) {
-        return {};
-    }
-
-    // 运行声码器
-    auto vocoder_start = std::chrono::high_resolution_clock::now();
-    std::vector<float> audio_samples = runVocoder(mel, mel_dim_);
-    auto vocoder_end = std::chrono::high_resolution_clock::now();
-
-    // 重采样（如果需要）
-    auto resample_start = std::chrono::high_resolution_clock::now();
-    if (config_.output_sample_rate > 0 && config_.output_sample_rate != sample_rate_) {
-        audio_samples = audio::resampleAudio(audio_samples, sample_rate_, config_.output_sample_rate);
-        if (output_sample_rate != nullptr) {
-            *output_sample_rate = config_.output_sample_rate;
+    auto synthesize_chunk = [&](const std::vector<int64_t>& chunk_tokens,
+                                int* chunk_sample_rate) -> std::vector<float> {
+        if (chunk_sample_rate != nullptr) {
+            *chunk_sample_rate = sample_rate_;
         }
+
+        std::vector<int64_t> final_tokens;
+        if (insert_blank_tokens) {
+            final_tokens = addBlankTokens(chunk_tokens);
+        } else {
+            final_tokens = chunk_tokens;
+        }
+
+        if (final_tokens.size() > kMaxMatchaAcousticTokens) {
+            std::cerr << "[TTS] Matcha token chunk exceeds acoustic limit: "
+                << final_tokens.size() << " > " << kMaxMatchaAcousticTokens << std::endl;
+            return {};
+        }
+
+        const bool use_cpu_fallback =
+            acoustic_cpu_fallback_model_ != nullptr &&
+            shouldUseCpuFallbackForAcoustic(final_tokens.size());
+
+        // 运行声学模型
+        auto acoustic_start = std::chrono::high_resolution_clock::now();
+        std::vector<float> mel = runAcousticModel(
+            final_tokens, current_speaker_, current_speed_, use_cpu_fallback);
+        auto acoustic_end = std::chrono::high_resolution_clock::now();
+        if (mel.empty()) {
+            return {};
+        }
+
+        // 运行声码器
+        auto vocoder_start = std::chrono::high_resolution_clock::now();
+        std::vector<float> audio_samples = runVocoder(mel, mel_dim_);
+        auto vocoder_end = std::chrono::high_resolution_clock::now();
+
+        // 重采样（如果需要）
+        auto resample_start = std::chrono::high_resolution_clock::now();
+        if (config_.output_sample_rate > 0 && config_.output_sample_rate != sample_rate_) {
+            audio_samples = audio::resampleAudio(audio_samples, sample_rate_, config_.output_sample_rate);
+            if (chunk_sample_rate != nullptr) {
+                *chunk_sample_rate = config_.output_sample_rate;
+            }
+        }
+        auto resample_end = std::chrono::high_resolution_clock::now();
+
+        if (trace_enabled_) {
+            std::cout << "[TTS] model_timing acoustic_total_ms="
+                << elapsedMs(acoustic_start, acoustic_end)
+                << " vocoder_total_ms=" << elapsedMs(vocoder_start, vocoder_end)
+                << " resample_ms=" << elapsedMs(resample_start, resample_end)
+                << " raw_tokens=" << chunk_tokens.size()
+                << " acoustic_tokens=" << final_tokens.size()
+                << " acoustic_provider=" << (use_cpu_fallback ? "cpu_fallback" : "primary")
+                << " mel_values=" << mel.size()
+                << " audio_samples=" << audio_samples.size()
+                << std::endl;
+        }
+
+        return audio_samples;
+    };
+
+    if (token_ids.size() <= hard_raw_limit) {
+        return synthesize_chunk(token_ids, output_sample_rate);
     }
-    auto resample_end = std::chrono::high_resolution_clock::now();
 
     if (trace_enabled_) {
-        std::cout << "[TTS] model_timing acoustic_total_ms="
-            << elapsedMs(acoustic_start, acoustic_end)
-            << " vocoder_total_ms=" << elapsedMs(vocoder_start, vocoder_end)
-            << " resample_ms=" << elapsedMs(resample_start, resample_end)
-            << " mel_values=" << mel.size()
-            << " audio_samples=" << audio_samples.size()
+        const size_t chunks = (token_ids.size() + chunk_raw_limit - 1) / chunk_raw_limit;
+        std::cout << "[TTS] Splitting Matcha tokens for acoustic limit: raw_tokens="
+            << token_ids.size()
+            << " chunk_raw_limit=" << chunk_raw_limit
+            << " chunks=" << chunks
             << std::endl;
     }
 
-    return audio_samples;
+    std::vector<float> merged_audio;
+    int merged_sample_rate = sample_rate_;
+    for (size_t begin = 0; begin < token_ids.size(); begin += chunk_raw_limit) {
+        const size_t end = std::min(begin + chunk_raw_limit, token_ids.size());
+        std::vector<int64_t> chunk_tokens(token_ids.begin() + begin, token_ids.begin() + end);
+
+        int chunk_sample_rate = sample_rate_;
+        std::vector<float> chunk_audio = synthesize_chunk(chunk_tokens, &chunk_sample_rate);
+        if (chunk_audio.empty()) {
+            return {};
+        }
+        if (merged_audio.empty()) {
+            merged_sample_rate = chunk_sample_rate;
+        }
+        merged_audio.insert(merged_audio.end(), chunk_audio.begin(), chunk_audio.end());
+    }
+
+    if (output_sample_rate != nullptr) {
+        *output_sample_rate = merged_sample_rate;
+    }
+    return merged_audio;
 }
 
 bool MatchaBackend::checkEspeakNgAvailable() {
@@ -800,7 +890,10 @@ void MatchaBackend::warmUpModels() {
 }
 
 std::vector<float> MatchaBackend::runAcousticModel(
-    const std::vector<int64_t>& tokens, int speaker_id, float speed) {
+    const std::vector<int64_t>& tokens,
+    int speaker_id,
+    float speed,
+    bool use_cpu_fallback) {
     std::vector<int64_t> token_shape = {1, static_cast<int64_t>(tokens.size())};
     std::vector<int64_t> length_data = {static_cast<int64_t>(tokens.size())};
     std::vector<int64_t> length_shape = {1};
@@ -833,8 +926,12 @@ std::vector<float> MatchaBackend::runAcousticModel(
     const char* output_names[] = {"mel"};
 
     std::lock_guard<std::mutex> lock(inference_mutex_);
+    Ort::Session* acoustic_session = acoustic_model_.get();
+    if (use_cpu_fallback && acoustic_cpu_fallback_model_) {
+        acoustic_session = acoustic_cpu_fallback_model_.get();
+    }
     auto run_start = std::chrono::high_resolution_clock::now();
-    auto output_tensors = acoustic_model_->Run(
+    auto output_tensors = acoustic_session->Run(
         Ort::RunOptions{nullptr},
         input_names, input_tensors.data(), 4,
         output_names, 1);
@@ -848,6 +945,7 @@ std::vector<float> MatchaBackend::runAcousticModel(
     if (trace_enabled_) {
         std::cout << "[TTS] acoustic_ort_ms=" << elapsedMs(run_start, run_end)
             << " input_tokens=" << tokens.size()
+            << " provider=" << (use_cpu_fallback ? "cpu_fallback" : "primary")
             << " mel_values=" << mel_size
             << std::endl;
     }

@@ -34,7 +34,7 @@ from .engine import Engine, Config, Result, BackendType, AudioFormat
 from .callback import TtsCallback, PrintCallback, SaveCallback, CollectCallback
 from .utils import synthesize, synthesize_to_file
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __author__ = "muggle"
 __all__ = [
     "Engine",
