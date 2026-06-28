@@ -127,7 +127,11 @@ private:
     // -------------------------------------------------------------------------
 
     /// @brief 运行声学模型
-    std::vector<float> runAcousticModel(const std::vector<int64_t>& tokens, int speaker_id, float speed);
+    std::vector<float> runAcousticModel(
+        const std::vector<int64_t>& tokens,
+        int speaker_id,
+        float speed,
+        bool use_cpu_fallback = false);
 
     /// @brief 运行声码器
     std::vector<float> runVocoder(const std::vector<float>& mel, int mel_dim);
@@ -165,6 +169,7 @@ private:
     // ONNX Runtime
     std::unique_ptr<Ort::Env> env_;
     std::unique_ptr<Ort::Session> acoustic_model_;
+    std::unique_ptr<Ort::Session> acoustic_cpu_fallback_model_;
     std::unique_ptr<Ort::Session> vocoder_model_;
     bool trace_enabled_ = false;
     bool ort_profiling_enabled_ = false;

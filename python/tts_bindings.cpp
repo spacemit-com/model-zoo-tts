@@ -387,7 +387,7 @@ PYBIND11_MODULE(_spacemit_tts, m) {
     // 模块级属性
     // =========================================================================
 
-    m.attr("__version__") = "1.0.3";
+    m.attr("__version__") = "1.0.4";
     m.attr("__author__") = "muggle";
     m.attr("__doc__") = "SpaceTTS - Text-To-Speech Engine Python bindings";
 }
