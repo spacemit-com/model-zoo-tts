@@ -6,6 +6,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#if defined(__linux__)
+#include <malloc.h>
+#endif
+
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -24,6 +28,12 @@
 namespace fs = std::filesystem;
 
 namespace {
+
+void releaseUnusedHeapMemory() noexcept {
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
+}
 
 std::vector<float> smoothNarrowImpulses(const std::vector<float>& audio) {
     if (audio.size() < 3) {
@@ -155,6 +165,7 @@ void KokoroBackend::shutdown() {
         env_.reset();
         initialized_ = false;
     }
+    releaseUnusedHeapMemory();
 }
 
 bool KokoroBackend::isInitialized() const {
