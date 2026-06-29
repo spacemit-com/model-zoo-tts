@@ -10,6 +10,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#if defined(__linux__)
+#include <malloc.h>
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -36,6 +40,13 @@
 namespace fs = std::filesystem;
 
 namespace {
+
+void releaseUnusedHeapMemory() noexcept {
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
+}
+
 struct PcloseDeleter {
     void operator()(FILE* p) const { if (p) pclose(p); }
 };
@@ -367,6 +378,7 @@ void MatchaBackend::shutdown() {
         token_to_id_.clear();
         initialized_ = false;
     }
+    releaseUnusedHeapMemory();
 }
 
 bool MatchaBackend::isInitialized() const {

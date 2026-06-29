@@ -361,6 +361,10 @@ PYBIND11_MODULE(_spacemit_tts, m) {
             "Update custom pronunciation lexicon")
         .def("get_config", &SpacemiT::TtsEngine::GetConfig,
             "Get current configuration")
+        .def("shutdown", [](SpacemiT::TtsEngine& self) {
+            py::gil_scoped_release release;
+            self.Shutdown();
+        }, "Release native backend resources")
 
         // 辅助方法
         .def("is_initialized", &SpacemiT::TtsEngine::IsInitialized,

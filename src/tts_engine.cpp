@@ -3,17 +3,33 @@
 
 #include "tts_service.h"
 
+#if defined(__linux__)
+#include <malloc.h>
+#endif
+
 #include <cstdint>
 
 #include <chrono>
+#include <exception>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "backends/tts_backend.hpp"
+
+namespace {
+
+void releaseUnusedHeapMemory() noexcept {
+#if defined(__GLIBC__)
+    malloc_trim(0);
+#endif
+}
+
+}  // namespace
 
 namespace SpacemiT {
 
@@ -181,6 +197,7 @@ static tts::BackendType convertBackendType(BackendType type) {
 }
 
 struct TtsEngine::Impl {
+    mutable std::mutex mutex;
     std::unique_ptr<tts::ITtsBackend> backend;
     TtsConfig config;
     bool initialized = false;
@@ -229,6 +246,28 @@ struct TtsEngine::Impl {
 
         return true;
     }
+
+    void shutdownUnlocked() noexcept {
+        if (!backend) {
+            initialized = false;
+            return;
+        }
+        try {
+            backend->shutdown();
+        } catch (const std::exception& e) {
+            std::cerr << "TTS backend shutdown failed: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "TTS backend shutdown failed: unknown error" << std::endl;
+        }
+        backend.reset();
+        initialized = false;
+        releaseUnusedHeapMemory();
+    }
+
+    void shutdownThreadSafe() noexcept {
+        std::lock_guard<std::mutex> lock(mutex);
+        shutdownUnlocked();
+    }
 };
 
 TtsEngine::TtsEngine(BackendType backend, const std::string& model_dir)
@@ -262,11 +301,18 @@ TtsEngine::TtsEngine(const TtsConfig& config)
     impl_->init(config);
 }
 
-TtsEngine::~TtsEngine() = default;
+TtsEngine::~TtsEngine() {
+    impl_->shutdownUnlocked();
+}
+
+void TtsEngine::Shutdown() {
+    impl_->shutdownThreadSafe();
+}
 
 std::shared_ptr<TtsEngineResult> TtsEngine::Call(const std::string& text,
                                                 const TtsConfig& config) {
     auto result = std::make_shared<TtsEngineResult>();
+    std::lock_guard<std::mutex> lock(impl_->mutex);
 
     if (!impl_->initialized || !impl_->backend) {
         result->impl_->success = false;
@@ -334,6 +380,7 @@ std::shared_ptr<TtsEngine::DuplexStream> TtsEngine::StartDuplexStream(
 }
 
 void TtsEngine::SetSpeed(float speed) {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->config.speech_rate = speed;
     if (impl_->backend) {
         impl_->backend->setSpeed(speed);
@@ -341,6 +388,7 @@ void TtsEngine::SetSpeed(float speed) {
 }
 
 void TtsEngine::SetSpeaker(int speaker_id) {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->config.speaker_id = speaker_id;
     if (impl_->backend) {
         impl_->backend->setSpeaker(speaker_id);
@@ -348,6 +396,7 @@ void TtsEngine::SetSpeaker(int speaker_id) {
 }
 
 void TtsEngine::SetVolume(int volume) {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     impl_->config.volume = volume;
     if (impl_->backend) {
         impl_->backend->setVolume(volume / 100.0f);
@@ -355,6 +404,7 @@ void TtsEngine::SetVolume(int volume) {
 }
 
 void TtsEngine::UpdateLexicon(const std::vector<PronunciationEntry>& entries) {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     if (!impl_->backend) return;
     std::vector<tts::ITtsBackend::LexiconEntry> lex_entries;
     lex_entries.reserve(entries.size());
@@ -365,14 +415,17 @@ void TtsEngine::UpdateLexicon(const std::vector<PronunciationEntry>& entries) {
 }
 
 TtsConfig TtsEngine::GetConfig() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->config;
 }
 
 bool TtsEngine::IsInitialized() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->initialized;
 }
 
 std::string TtsEngine::GetEngineName() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     if (impl_->backend) {
         return impl_->backend->getName();
     }
@@ -380,10 +433,12 @@ std::string TtsEngine::GetEngineName() const {
 }
 
 BackendType TtsEngine::GetBackendType() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     return impl_->config.backend;
 }
 
 int TtsEngine::GetNumSpeakers() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     if (impl_->backend) {
         return impl_->backend->getNumSpeakers();
     }
@@ -391,6 +446,7 @@ int TtsEngine::GetNumSpeakers() const {
 }
 
 int TtsEngine::GetSampleRate() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
     if (impl_->backend) {
         return impl_->backend->getSampleRate();
     }

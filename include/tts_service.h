@@ -201,6 +201,9 @@ public:
     explicit TtsEngine(const TtsConfig& config);
     virtual ~TtsEngine();
 
+    // 显式释放 native backend / ONNX Runtime 资源。析构会自动调用。
+    void Shutdown();
+
     TtsEngine(const TtsEngine&) = delete;
     TtsEngine& operator=(const TtsEngine&) = delete;
 

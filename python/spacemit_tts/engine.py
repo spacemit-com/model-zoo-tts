@@ -368,6 +368,28 @@ class Engine:
         self._engine = _tts.TtsEngine(config._config)
         self._config = config
 
+    def _require_engine(self):
+        engine = getattr(self, "_engine", None)
+        if engine is None:
+            raise RuntimeError("TTS engine is closed")
+        return engine
+
+    def close(self) -> None:
+        """Release native backend resources held by this engine."""
+        engine = getattr(self, "_engine", None)
+        if engine is None:
+            return
+        engine.shutdown()
+        self._engine = None
+
+    shutdown = close
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def synthesize(self, text: str) -> Result:
         """
         Synthesize text (blocking)
@@ -384,7 +406,7 @@ class Engine:
             >>> result = engine.synthesize("你好世界")
             >>> print(f"Generated {result.duration_ms}ms audio")
         """
-        native_result = self._engine.call(text)
+        native_result = self._require_engine().call(text)
         return Result(native_result)
 
     def synthesize_to_file(self, text: str, file_path: Union[str, Path]) -> bool:
@@ -401,7 +423,7 @@ class Engine:
         Example:
             >>> engine.synthesize_to_file("你好", "output.wav")
         """
-        return self._engine.call_to_file(text, str(file_path))
+        return self._require_engine().call_to_file(text, str(file_path))
 
     def synthesize_streaming(self, text: str, callback):
         """
@@ -421,7 +443,7 @@ class Engine:
         from .callback import TtsCallback
         if isinstance(callback, TtsCallback):
             native_cb = callback._get_native_callback()
-            self._engine.streaming_call(text, native_cb)
+            self._require_engine().streaming_call(text, native_cb)
         else:
             raise TypeError("callback must be an instance of TtsCallback")
 
@@ -435,7 +457,7 @@ class Engine:
         Example:
             >>> engine.set_speed(1.5)  # 50% faster
         """
-        self._engine.set_speed(speed)
+        self._require_engine().set_speed(speed)
 
     def set_speaker(self, speaker_id: int):
         """
@@ -444,7 +466,7 @@ class Engine:
         Args:
             speaker_id: Speaker ID
         """
-        self._engine.set_speaker(speaker_id)
+        self._require_engine().set_speaker(speaker_id)
 
     def set_volume(self, volume: int):
         """
@@ -453,7 +475,7 @@ class Engine:
         Args:
             volume: Volume [0, 100]
         """
-        self._engine.set_volume(volume)
+        self._require_engine().set_volume(volume)
 
     def update_lexicon(self, entries: list):
         """
@@ -486,12 +508,12 @@ class Engine:
             else:
                 entry = e
             native_entries.append(entry)
-        self._engine.update_lexicon(native_entries)
+        self._require_engine().update_lexicon(native_entries)
 
     @property
     def config(self) -> Config:
         """Get current configuration"""
-        native_config = self._engine.get_config()
+        native_config = self._require_engine().get_config()
         config = Config.__new__(Config)
         config._config = native_config
         return config
@@ -499,27 +521,31 @@ class Engine:
     @property
     def is_initialized(self) -> bool:
         """Check if engine is initialized"""
-        return self._engine.is_initialized()
+        engine = getattr(self, "_engine", None)
+        if engine is None:
+            return False
+        return engine.is_initialized()
 
     @property
     def engine_name(self) -> str:
         """Get engine type name"""
-        return self._engine.get_engine_name()
+        return self._require_engine().get_engine_name()
 
     @property
     def sample_rate(self) -> int:
         """Get output sample rate (Hz)"""
-        return self._engine.get_sample_rate()
+        return self._require_engine().get_sample_rate()
 
     # Context manager support
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # C++ destructor handles cleanup
-        pass
+        self.close()
 
     def __repr__(self) -> str:
+        if getattr(self, "_engine", None) is None:
+            return "<Engine closed>"
         return (f"<Engine backend={self.engine_name} "
                 f"sample_rate={self.sample_rate}Hz "
                 f"initialized={self.is_initialized}>")
