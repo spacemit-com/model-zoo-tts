@@ -118,9 +118,8 @@ void printUsage(const char* program) {
         << "  matcha:zh      Matcha 中文 (22050Hz)\n"
         << "  matcha:en      Matcha 英文 (22050Hz)\n"
         << "  matcha:zh-en   Matcha 中英混合 (16000Hz)\n"
-        << "  kokoro         Kokoro 默认音色 (24000Hz)\n"
-        << "  kokoro:<voice> Kokoro 指定音色 (支持短名和全名)\n"
-        << "                 短名: kokoro:xiaobei  全名: kokoro:zf_xiaobei\n"
+        << "  kokoro:zh      Kokoro 中文 (24000Hz)\n"
+        << "  kokoro:en      Kokoro 英文 (24000Hz)\n"
         << "\n"
         << "交互模式:\n"
         << "  不带 -p 参数时进入交互模式，输入文本后按 Enter 合成\n"
@@ -131,9 +130,8 @@ void printUsage(const char* program) {
         << "  " << program << " -p \"你好世界\" -l matcha:zh       # 中文合成\n"
         << "  " << program << " -p \"Hello\" -l matcha:en         # 英文合成\n"
         << "  " << program << " -p \"今天学Python\" -l matcha:zh-en  # 中英混合\n"
-        << "  " << program << " -p \"你好\" -l kokoro              # Kokoro 默认音色\n"
-        << "  " << program << " -p \"你好\" -l kokoro:yunxi        # Kokoro 短名\n"
-        << "  " << program << " -p \"你好\" -l kokoro:zm_yunxi     # Kokoro 全名\n"
+        << "  " << program << " -p \"你好世界\" -l kokoro:zh        # Kokoro 中文\n"
+        << "  " << program << " -p \"Hello\" -l kokoro:en          # Kokoro 英文\n"
         << "  # 中文热词 (matcha:zh 或 matcha:zh-en): 纠正多音字, phoneme 为带声调拼音\n"
         << "  " << program << " -p \"你好,我是语音合成模型,很高兴为你服务\" -l matcha:zh \\\n"
         << "      --lexicon \"为你:wei4 ni3\"    # 把 '为你' 从 wei2 ni3 纠正为 wei4 ni3\n"
@@ -225,8 +223,15 @@ EngineSelection parseEngine(const std::string& spec) {
     }
 
     if (engine == "kokoro") {
-        sel.backend = SpacemiT::BackendType::KOKORO;
-        sel.voice = resolveVoiceName(variant);
+        if (variant.empty() || variant == "en") {
+            sel.backend = SpacemiT::BackendType::KOKORO_EN;
+        } else if (variant == "zh") {
+            sel.backend = SpacemiT::BackendType::KOKORO_ZH;
+        } else {
+            std::cerr << "错误: 未知 Kokoro 变体 '" << variant << "'\n"
+                << "可用变体: en, zh\n";
+            exit(1);
+        }
         return sel;
     }
 
@@ -239,7 +244,7 @@ EngineSelection parseEngine(const std::string& spec) {
 
     std::cerr << "错误: 未知引擎 '" << engine << "'\n"
         << "可用引擎: matcha, kokoro\n"
-        << "用法: -l matcha:zh 或 -l kokoro:zf_xiaobei\n";
+        << "用法: -l matcha:zh 或 -l kokoro:zh\n";
     exit(1);
 }
 
@@ -282,6 +287,7 @@ int main(int argc, char* argv[]) {
     std::string lexicon_str;
     std::string provider = "auto";
     bool interactive = true;
+    int repeat = 1;
 
     // 解析参数
     for (int i = 1; i < argc; i++) {
@@ -304,6 +310,8 @@ int main(int argc, char* argv[]) {
             provider = argv[++i];
         } else if (strcmp(argv[i], "--lexicon") == 0 && i + 1 < argc) {
             lexicon_str = argv[++i];
+        } else if (strcmp(argv[i], "--repeat") == 0 && i + 1 < argc) {
+            repeat = std::stoi(argv[++i]);
         }
     }
 
@@ -318,11 +326,6 @@ int main(int argc, char* argv[]) {
     config.speech_rate = speed;
     config.provider = provider;
 
-    // Kokoro: set voice
-    if (selection.backend == SpacemiT::BackendType::KOKORO && !selection.voice.empty()) {
-        config.voice = selection.voice;
-    }
-
     // 根据后端设置采样率
     switch (selection.backend) {
         case SpacemiT::BackendType::MATCHA_ZH:
@@ -333,6 +336,8 @@ int main(int argc, char* argv[]) {
             config.sample_rate = 16000;
             break;
         case SpacemiT::BackendType::KOKORO:
+        case SpacemiT::BackendType::KOKORO_EN:
+        case SpacemiT::BackendType::KOKORO_ZH:
             config.sample_rate = 24000;
             break;
         default:
@@ -433,8 +438,11 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        if (!synthesize(engine, text, output_file)) {
-            return 1;
+        for (int r = 0; r < repeat; ++r) {
+            if (repeat > 1) std::cout << "--- iter " << r << " ---" << std::endl;
+            if (!synthesize(engine, text, output_file)) {
+                return 1;
+            }
         }
     }
 

@@ -191,6 +191,10 @@ static tts::BackendType convertBackendType(BackendType type) {
             return tts::BackendType::PIPER;
         case BackendType::KOKORO:
             return tts::BackendType::KOKORO;
+        case BackendType::KOKORO_EN:
+            return tts::BackendType::KOKORO_EN;
+        case BackendType::KOKORO_ZH:
+            return tts::BackendType::KOKORO_ZH;
         default:
             return tts::BackendType::MATCHA_ZH;
     }
@@ -287,6 +291,8 @@ TtsEngine::TtsEngine(BackendType backend, const std::string& model_dir)
             config.sample_rate = 16000;
             break;
         case BackendType::KOKORO:
+        case BackendType::KOKORO_EN:
+        case BackendType::KOKORO_ZH:
             config.sample_rate = 24000;
             break;
         default:

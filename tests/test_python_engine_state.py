@@ -19,6 +19,8 @@ def _load_engine_module(monkeypatch):
         VITS = "vits"
         PIPER = "piper"
         KOKORO = "kokoro"
+        KOKORO_EN = "kokoro_en"
+        KOKORO_ZH = "kokoro_zh"
 
     class NativeAudioFormat:
         PCM = "pcm"
@@ -31,6 +33,9 @@ def _load_engine_module(monkeypatch):
             self.backend = None
             self.model_dir = ""
             self.provider = "auto"
+            self.voice = "default"
+            self.num_threads = 2
+            self.enable_warmup = True
             self.sample_rate = 16000
             self.speech_rate = 1.0
             self.volume = 100
@@ -45,7 +50,14 @@ def _load_engine_module(monkeypatch):
 
         @staticmethod
         def available_presets():
-            return ["matcha_zh", "matcha_en", "matcha_zh_en", "kokoro"]
+            return [
+                "matcha_zh",
+                "matcha_en",
+                "matcha_zh_en",
+                "kokoro",
+                "kokoro_en",
+                "kokoro_zh",
+            ]
 
     class FakeNativeEngine:
         def __init__(self, config):
@@ -93,3 +105,35 @@ def test_engine_is_initialized_returns_false_after_close(monkeypatch):
     assert engine.is_initialized is False
     engine.close()
     assert engine.is_initialized is False
+
+
+def test_config_selects_backend_specific_default_model_root(monkeypatch):
+    engine_module = _load_engine_module(monkeypatch)
+    cache_root = Path.home() / ".cache" / "models" / "tts"
+
+    matcha = engine_module.Config(engine_module.BackendType.MATCHA_EN)
+    kokoro_en = engine_module.Config(engine_module.BackendType.KOKORO_EN)
+    kokoro_zh = engine_module.Config(engine_module.BackendType.KOKORO_ZH)
+
+    assert Path(matcha.model_dir) == cache_root / "matcha-tts"
+    assert Path(kokoro_en.model_dir) == cache_root / "kokoro-tts"
+    assert Path(kokoro_zh.model_dir) == cache_root / "kokoro-tts"
+    assert matcha.num_threads == 2
+    assert kokoro_en.num_threads == 4
+    assert kokoro_zh.num_threads == 4
+    assert matcha.provider == "auto"
+    assert {
+        "kokoro",
+        "kokoro_en",
+        "kokoro_zh",
+    }.issubset(engine_module.Config.available_presets())
+
+
+def test_config_preserves_explicit_model_root(monkeypatch, tmp_path):
+    engine_module = _load_engine_module(monkeypatch)
+    config = engine_module.Config(
+        engine_module.BackendType.KOKORO_EN,
+        model_dir=str(tmp_path),
+    )
+
+    assert Path(config.model_dir) == tmp_path

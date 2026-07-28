@@ -4,7 +4,7 @@ Utility functions for quick TTS operations
 Provides convenient one-line functions for common tasks.
 """
 
-from typing import Union
+from typing import Optional, Union
 from pathlib import Path
 
 from .engine import Engine, Config, BackendType, Result
@@ -12,7 +12,7 @@ from .engine import Engine, Config, BackendType, Result
 
 def synthesize(text: str,
                backend: BackendType = BackendType.MATCHA_ZH_EN,
-               model_dir: str = "~/.cache/models/tts/matcha-tts") -> Result:
+               model_dir: Optional[str] = None) -> Result:
     """
     Quick text-to-speech synthesis
 
@@ -21,7 +21,7 @@ def synthesize(text: str,
     Args:
         text: Text to synthesize
         backend: TTS backend type (default: MATCHA_ZH_EN)
-        model_dir: Model directory path
+        model_dir: Model cache root; None selects the backend default
 
     Returns:
         Synthesis result
@@ -41,7 +41,7 @@ def synthesize(text: str,
 def synthesize_to_file(text: str,
                        file_path: Union[str, Path],
                        backend: BackendType = BackendType.MATCHA_ZH_EN,
-                       model_dir: str = "~/.cache/models/tts/matcha-tts") -> bool:
+                       model_dir: Optional[str] = None) -> bool:
     """
     Quick synthesis directly to file
 
@@ -51,7 +51,7 @@ def synthesize_to_file(text: str,
         text: Text to synthesize
         file_path: Output file path
         backend: TTS backend type (default: MATCHA_ZH_EN)
-        model_dir: Model directory path
+        model_dir: Model cache root; None selects the backend default
 
     Returns:
         True if successful
@@ -72,7 +72,7 @@ def synthesize_to_file(text: str,
 def synthesize_batch(texts: list[str],
                      output_dir: Union[str, Path],
                      backend: BackendType = BackendType.MATCHA_ZH_EN,
-                     model_dir: str = "~/.cache/models/tts/matcha-tts",
+                     model_dir: Optional[str] = None,
                      prefix: str = "output") -> list[Path]:
     """
     Synthesize multiple texts to files
@@ -81,7 +81,7 @@ def synthesize_batch(texts: list[str],
         texts: List of texts to synthesize
         output_dir: Output directory
         backend: TTS backend type
-        model_dir: Model directory path
+        model_dir: Model cache root; None selects the backend default
         prefix: Filename prefix
 
     Returns:

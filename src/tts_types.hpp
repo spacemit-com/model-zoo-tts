@@ -56,11 +56,15 @@ enum class BackendType {
     MATCHA_EN,          // 英文 (matcha-icefall-en_US-ljspeech, 22050Hz)
     MATCHA_ZH_EN,       // 中英混合 (matcha-icefall-zh-en, 16000Hz)
 
+    // Kokoro 系列
+    KOKORO,             // Kokoro TTS (兼容旧名, 等价于 KOKORO_EN)
+    KOKORO_EN,          // 英文 (kokoro-v1.0-en, 24000Hz)
+    KOKORO_ZH,          // 中文 (kokoro-v1.1-zh, 24000Hz)
+
     // 预留扩展
     COSYVOICE,          // CosyVoice
     VITS,               // VITS
     PIPER,              // Piper TTS
-    KOKORO,             // Kokoro TTS
     CUSTOM,             // 自定义后端
 };
 
@@ -73,6 +77,8 @@ inline const char* backendTypeToString(BackendType type) {
         case BackendType::VITS:         return "vits";
         case BackendType::PIPER:        return "piper";
         case BackendType::KOKORO:       return "kokoro";
+        case BackendType::KOKORO_EN:    return "kokoro-en";
+        case BackendType::KOKORO_ZH:    return "kokoro-zh";
         case BackendType::CUSTOM:       return "custom";
         default:                        return "unknown";
     }
@@ -87,6 +93,8 @@ inline int getDefaultSampleRate(BackendType type) {
         case BackendType::VITS:         return 22050;
         case BackendType::PIPER:        return 22050;
         case BackendType::KOKORO:       return 24000;
+        case BackendType::KOKORO_EN:    return 24000;
+        case BackendType::KOKORO_ZH:    return 24000;
         default:                        return 22050;
     }
 }

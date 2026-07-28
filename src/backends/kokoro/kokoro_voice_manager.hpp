@@ -13,7 +13,7 @@ namespace tts {
 // KokoroVoiceManager - Kokoro voice style vector manager
 // =============================================================================
 //
-// Loads .bin files containing raw float32 style vectors, reshaped as (N, 256).
+// Loads raw .bin or NumPy .npy float32 style vectors, reshaped as (N, 256).
 // Provides style vector lookup by token length.
 //
 
@@ -24,13 +24,13 @@ public:
     KokoroVoiceManager() = default;
     ~KokoroVoiceManager() = default;
 
-    /// @brief Load a voice .bin file
+    /// @brief Load a voice .bin or .npy file
     /// @param voice_path Path to the .bin file
     /// @return true if loaded successfully
     bool loadVoice(const std::string& voice_path);
 
     /// @brief Get style vector for given token length
-    /// @param token_len Number of tokens in the input
+    /// @param token_len Number of effective phoneme tokens (without BOS/EOS)
     /// @return Style vector of size STYLE_DIM (256)
     std::vector<float> getStyleVector(int token_len) const;
 

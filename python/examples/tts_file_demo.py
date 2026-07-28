@@ -88,7 +88,7 @@ def main():
 
     # Kokoro synthesis (24000Hz)
     print("Creating TTS engine (Kokoro)...")
-    config_kokoro = spacemit_tts.Config.preset("kokoro")
+    config_kokoro = spacemit_tts.Config.preset("kokoro").with_provider("spacemit")
     engine_kokoro = spacemit_tts.Engine(config_kokoro)
     print(f"Engine: {engine_kokoro.engine_name}")
     print(f"Sample rate: {engine_kokoro.sample_rate} Hz")

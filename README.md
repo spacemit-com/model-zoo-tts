@@ -8,7 +8,7 @@
 | -------- | -------------------------------------------------------------------- |
 | 部署方式 | **本地**（ONNX 推理）                                                |
 | 合成方式 | 文本阻塞合成 `Call()`、`CallToFile()`；流式合成 `StreamingCall()`、`StartDuplexStream()` |
-| 后端     | MATCHA_ZH / MATCHA_EN / MATCHA_ZH_EN / KOKORO                         |
+| 后端     | MATCHA_ZH / MATCHA_EN / MATCHA_ZH_EN / KOKORO_EN / KOKORO_ZH          |
 | 语言     | 中文、英文、中英混合                                                 |
 | 接口     | C++（`include/tts_service.h`）、Python（`spacemit_tts`）             |
 
@@ -19,7 +19,8 @@
 | MATCHA_ZH | 中文 | 22050Hz | ✓ |
 | MATCHA_EN | 英文 | 22050Hz | ✓ |
 | MATCHA_ZH_EN | 中英混合 | 16000Hz | ✓ |
-| KOKORO | 中文/英文 | 24000Hz | ✓ |
+| KOKORO_EN | 英文 | 24000Hz | ✓ |
+| KOKORO_ZH | 中文（支持中英混合） | 24000Hz | ✓ |
 
 ## 2. 验证模型
 
@@ -49,7 +50,10 @@ cmake -B build -S . \
 
 ### 2.2. 下载模型
 
-使用 Matcha-TTS 等时需将模型放到默认路径 **`~/.cache/models/tts/matcha-tts/`**（或各后端约定路径）；首次运行可自动下载，也可从镜像提前下载。
+所有 backend 都使用 `~/.cache/models/tts/` 下的独立标准缓存目录，首次运行可自动下载：
+
+- Matcha：`~/.cache/models/tts/matcha-tts/`
+- Kokoro：`~/.cache/models/tts/kokoro-tts/`
 
 **模型源：**
 - **进迭时空镜像（推荐）**：<https://archive.spacemit.com/spacemit-ai/model_zoo/tts/>  
@@ -215,13 +219,14 @@ target_include_directories(your_target PRIVATE ${TTS_SOURCE_DIR}/include)
 
 以下数据基于 K3 平台量化模型构建（`tts_file_demo --provider auto`）实测。每项运行 3 次，表中取 RTF 中位数对应结果；引擎初始化与 warmup 不计入处理时间。
 
-默认 provider 路由：`matcha:zh` / `matcha:en` 使用 SpaceMIT EP 跑声学模型、CPU 跑 vocoder；`matcha:zh-en` 使用 CPU 跑声学模型和 vocoder；Kokoro 当前使用 CPU 路径。
+默认 provider 路由：`matcha:zh` / `matcha:en` 使用 SpaceMIT EP 跑声学模型、CPU 跑 vocoder；`matcha:zh-en` 使用 CPU 跑声学模型和 vocoder；Kokoro 当前使用 SpaceMIT EP。
 
 | 后端 | 测试文本 | 音频时长 | 处理时间 | RTF |
 |------|----------|----------|----------|-----|
 | MATCHA_ZH | "这是一个语音合成测试" | 2565ms | 575ms | 0.22 |
 | MATCHA_EN | "This is a longer English speech synthesis benchmark sentence for measuring real time factor on the K3 platform." | 6873ms | 1608ms | 0.23 |
 | MATCHA_ZH_EN | "今天学Python" | 1920ms | 542ms | 0.28 |
-| KOKORO | "你好" | 2075ms | 6582ms | 3.17 |
+| KOKORO_EN | "This is a spacemit k3 kokoro performance test." | 4950ms | 2026ms | 0.41 |
+| KOKORO_ZH | "这是一个语音合成测试" | 3025ms | 870ms | 0.29 |
 
 测试命令：`tts_file_demo -p "<text>" -l <engine> --provider auto`

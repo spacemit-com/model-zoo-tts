@@ -143,7 +143,12 @@ PYBIND11_MODULE(_spacemit_tts, m) {
         .value("COSYVOICE", SpacemiT::BackendType::COSYVOICE, "CosyVoice (reserved)")
         .value("VITS", SpacemiT::BackendType::VITS, "VITS (reserved)")
         .value("PIPER", SpacemiT::BackendType::PIPER, "Piper TTS (reserved)")
-        .value("KOKORO", SpacemiT::BackendType::KOKORO, "Kokoro TTS (reserved)")
+        .value("KOKORO", SpacemiT::BackendType::KOKORO,
+            "Kokoro English (legacy alias)")
+        .value("KOKORO_EN", SpacemiT::BackendType::KOKORO_EN,
+            "Kokoro v1.0 English (24000Hz)")
+        .value("KOKORO_ZH", SpacemiT::BackendType::KOKORO_ZH,
+            "Kokoro v1.1 Chinese (24000Hz)")
         .export_values();
 
     // =========================================================================

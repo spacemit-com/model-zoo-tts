@@ -43,7 +43,13 @@ class BackendType(Enum):
     """Piper TTS (reserved)"""
 
     KOKORO = _tts.BackendType.KOKORO
-    """Kokoro TTS (reserved)"""
+    """Kokoro English (legacy alias)"""
+
+    KOKORO_EN = _tts.BackendType.KOKORO_EN
+    """Kokoro v1.0 English (24000Hz)"""
+
+    KOKORO_ZH = _tts.BackendType.KOKORO_ZH
+    """Kokoro v1.1 Chinese (24000Hz)"""
 
     def to_native(self):
         """Convert to native C++ enum value"""
@@ -84,24 +90,39 @@ class Config:
     """
 
     def __init__(self, backend: BackendType = BackendType.MATCHA_ZH_EN,
-                 model_dir: str = "~/.cache/models/tts/matcha-tts",
+                 model_dir: Optional[str] = None,
                  provider: str = "auto"):
         """
         Create TTS configuration
 
         Args:
             backend: Backend type (default: MATCHA_ZH_EN)
-            model_dir: Model directory path
+            model_dir: Model cache root. None selects the backend default:
+                ~/.cache/models/tts/kokoro-tts for Kokoro, otherwise
+                ~/.cache/models/tts/matcha-tts.
             provider: Inference provider policy: auto, cpu, spacemit
         """
+        kokoro_backends = (
+            BackendType.KOKORO,
+            BackendType.KOKORO_EN,
+            BackendType.KOKORO_ZH,
+        )
+        if model_dir is None:
+            model_dir = (
+                "~/.cache/models/tts/kokoro-tts"
+                if backend in kokoro_backends
+                else "~/.cache/models/tts/matcha-tts"
+            )
         self._config = _tts.TtsConfig()
         self._config.backend = backend.to_native()
         self._config.model_dir = str(Path(model_dir).expanduser())
         self._config.provider = provider
+        if backend in kokoro_backends:
+            self._config.num_threads = 4
 
     @staticmethod
     def preset(name: str) -> "Config":
-        """Create configuration from preset name (e.g. 'matcha_zh', 'matcha_en', 'matcha_zh_en', 'kokoro')"""
+        """Create a named preset, including kokoro, kokoro_en, and kokoro_zh."""
         config = Config.__new__(Config)
         config._config = _tts.TtsConfig.preset(name)
         return config
@@ -165,6 +186,42 @@ class Config:
     @provider.setter
     def provider(self, value: str):
         self._config.provider = value
+
+    @property
+    def model_dir(self) -> str:
+        """Resolved model cache root."""
+        return self._config.model_dir
+
+    @model_dir.setter
+    def model_dir(self, value: str):
+        self._config.model_dir = str(Path(value).expanduser())
+
+    @property
+    def voice(self) -> str:
+        """Voice name or voice resource filename."""
+        return self._config.voice
+
+    @voice.setter
+    def voice(self, value: str):
+        self._config.voice = value
+
+    @property
+    def num_threads(self) -> int:
+        """Number of inference threads."""
+        return self._config.num_threads
+
+    @num_threads.setter
+    def num_threads(self, value: int):
+        self._config.num_threads = value
+
+    @property
+    def enable_warmup(self) -> bool:
+        """Whether model warmup is enabled during engine initialization."""
+        return self._config.enable_warmup
+
+    @enable_warmup.setter
+    def enable_warmup(self, value: bool):
+        self._config.enable_warmup = value
 
     # Builder methods (chainable)
     def with_speed(self, speed: float) -> "Config":
@@ -487,7 +544,7 @@ class Engine:
 
                      locale='zh' (default): phoneme is space-separated pinyin with
                          tone numbers 1-4, e.g. "wei4 ni3".
-                     locale='en' (matcha:en or matcha:zh-en): phoneme is
+                     locale='en' (Matcha or Kokoro): phoneme is
                          English word(s), rendered by espeak-ng, e.g. "space meet".
 
         Example:
@@ -495,7 +552,7 @@ class Engine:
             >>> engine.update_lexicon([
             ...     {"word": "为你", "phoneme": "wei4 ni3"},
             ... ])
-            >>> # English word (matcha:en or matcha:zh-en): render via espeak
+            >>> # English word (Matcha or Kokoro): render via espeak
             >>> engine.update_lexicon([
             ...     {"word": "SpaceMIT", "phoneme": "space meet", "locale": "en"},
             ... ])

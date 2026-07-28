@@ -12,44 +12,43 @@ namespace tts {
 // KokoroModelDownloader - Kokoro model auto-downloader
 // =============================================================================
 //
-// Downloads Kokoro v1.0 model and voice files.
-// Default source: ModelScope (accessible in China).
-// Set env KOKORO_MIRROR=huggingface to use HuggingFace instead.
-// Cache directory: ~/.cache/models/tts/kokoro-tts/
+// Downloads and extracts the per-language Kokoro model tar.gz package (matches
+// the matcha download approach).
+//   en -> kokoro-v1.0-en.tar.gz   (kokoro-v1.0-en/)
+//   zh -> kokoro-v1.1-zh.tar.gz   (kokoro-v1.1-zh/)
+// Source: https://archive.spacemit.com/spacemit-ai/model_zoo/tts/kokoro/
+// Cache dir: ~/.cache/models/tts/kokoro-tts/
 //
 
 class KokoroModelDownloader {
 public:
-    // Mirror sources
-    static constexpr const char* MS_BASE_URL =
-        "https://modelscope.cn/models/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main";
-    static constexpr const char* HF_BASE_URL =
-        "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main";
+    static constexpr const char* BASE_URL =
+        "https://archive.spacemit.com/spacemit-ai/model_zoo/tts/kokoro";
 
-    // Model files
-    static constexpr const char* MODEL_URL_PATH = "onnx/model_quantized.onnx";  // Remote quantized model
-    static constexpr const char* MODEL_FILE = "kokoro-v1.0.q.onnx";             // Local filename
-    static constexpr const char* DEFAULT_VOICE = "zf_xiaobei.bin";
-
-    KokoroModelDownloader();
+    explicit KokoroModelDownloader(const std::string& cache_dir = "");
     ~KokoroModelDownloader() = default;
 
-    /// @brief Ensure model and voice files exist, download if necessary
-    /// @param voice Voice name (without .bin extension)
+    /// @brief Ensure the model files for a language exist, downloading and
+    ///        extracting them if not.
+    /// @param language "en" or "zh"
     /// @return true if all files are ready
-    bool ensureModelsExist(const std::string& voice = "default");
+    bool ensureModelsExist(const std::string& language);
 
-    /// @brief Get cache directory path
     std::string getCacheDir() const { return cache_dir_; }
 
 private:
     std::string cache_dir_;  // ~/.cache/models/tts/kokoro-tts/
 
-    std::string getBaseUrl() const;
     bool ensureCacheDir();
     bool downloadFile(const std::string& url, const std::string& dest_path);
-    bool downloadModel();
-    bool downloadVoice(const std::string& voice);
+    bool downloadLanguageModel(const std::string& language);
+    bool extractTarArchive(const std::string& archive_path);
+    bool validateRequiredFiles(const std::string& language) const;
+
+    // Per-language archive name, subdirectory name, and model file relative path.
+    std::string archiveName(const std::string& language) const;
+    std::string subdirName(const std::string& language) const;
+    std::string modelFileRel(const std::string& language) const;
 };
 
 }  // namespace tts

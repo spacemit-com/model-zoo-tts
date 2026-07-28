@@ -73,6 +73,8 @@ void verify_public_presets() {
     require(contains(presets, "matcha_en"), "matcha_en preset must be advertised");
     require(contains(presets, "matcha_zh_en"), "matcha_zh_en preset must be advertised");
     require(contains(presets, "kokoro"), "kokoro preset must be advertised");
+    require(contains(presets, "kokoro_en"), "kokoro_en preset must be advertised");
+    require(contains(presets, "kokoro_zh"), "kokoro_zh preset must be advertised");
 
     const auto zh = SpacemiT::TtsConfig::Preset("matcha_zh");
     require(zh.backend == SpacemiT::BackendType::MATCHA_ZH,
@@ -87,8 +89,22 @@ void verify_public_presets() {
 
     const auto kokoro = SpacemiT::TtsConfig::Preset("kokoro");
     require(kokoro.backend == SpacemiT::BackendType::KOKORO,
-            "kokoro must select KOKORO backend");
-    require(kokoro.sample_rate == 24000, "kokoro must use 24000 Hz sample rate");
+            "kokoro must select the compatibility KOKORO backend");
+    require(kokoro.num_threads == 4, "kokoro must use 4 threads");
+
+    const auto kokoro_en = SpacemiT::TtsConfig::Preset("kokoro_en");
+    require(kokoro_en.backend == SpacemiT::BackendType::KOKORO_EN,
+            "kokoro_en must select KOKORO_EN backend");
+    require(kokoro_en.sample_rate == 24000,
+            "kokoro_en must use 24000 Hz sample rate");
+    require(kokoro_en.num_threads == 4, "kokoro_en must use 4 threads");
+
+    const auto kokoro_zh = SpacemiT::TtsConfig::Preset("kokoro_zh");
+    require(kokoro_zh.backend == SpacemiT::BackendType::KOKORO_ZH,
+            "kokoro_zh must select KOKORO_ZH backend");
+    require(kokoro_zh.sample_rate == 24000,
+            "kokoro_zh must use 24000 Hz sample rate");
+    require(kokoro_zh.num_threads == 4, "kokoro_zh must use 4 threads");
 
     const auto tuned = zh_en.withSpeed(1.25f).withSpeaker(3).withVolume(80).withProvider("cpu");
     require(near(zh_en.speech_rate, 1.0f), "withSpeed must not mutate original config");

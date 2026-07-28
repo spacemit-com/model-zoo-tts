@@ -12,29 +12,41 @@
 #include <string>
 #include <vector>
 
-#include "backends/kokoro/kokoro_phonemizer.hpp"
 #include "backends/kokoro/kokoro_voice_manager.hpp"
 #include "backends/tts_backend.hpp"
 
 namespace tts {
 
 // =============================================================================
-// KokoroBackend - Kokoro v1.0 TTS Backend
+// Kokoro Backend Base Class
 // =============================================================================
 //
-// End-to-end TTS backend using a single ONNX model.
-// Input: token_ids + style_vector + speed → Output: 24kHz audio waveform
+// Common base for all Kokoro TTS backends. Handles ONNX model loading, SpaceMIT
+// EP setup, end-to-end inference and audio post-processing. Derived classes only
+// provide the language-specific frontend (text -> token IDs) and model subdir.
 //
-// Unlike Matcha-TTS (acoustic model + vocoder), Kokoro is a single model
-// that directly outputs audio, so it inherits ITtsBackend directly.
+// Kokoro is a single-model end-to-end TTS (token_ids + style + speed -> 24kHz
+// waveform), so unlike Matcha (acoustic model + vocoder) it derives directly
+// from ITtsBackend.
+//
+// Hierarchy:
+//   ITtsBackend
+//       +-- KokoroBackend (this class - common base)
+//               +-- KokoroEnBackend  (English, kokoro-v1.0-en)
+//               +-- KokoroZhBackend  (Chinese, kokoro-v1.1-zh)
 //
 
 class KokoroBackend : public ITtsBackend {
 public:
     static constexpr int SAMPLE_RATE = 24000;
     static constexpr int MAX_TOKEN_LENGTH = 512;
+    // Warmup sequence length (~45 Chinese chars). The ORT arena grows with output
+    // size, so warming at this length lets the first real request of a typical
+    // sentence run at steady-state RTF instead of paying cold-start arena growth.
+    // Overridable via SPACEMIT_TTS_WARMUP_TOKENS for longer inputs.
+    static constexpr int WARMUP_TOKEN_LENGTH = 128;
 
-    KokoroBackend();
+    explicit KokoroBackend(BackendType type);
     ~KokoroBackend() override;
 
     // -------------------------------------------------------------------------
@@ -56,31 +68,76 @@ public:
 
     ErrorInfo setSpeed(float speed) override;
 
-private:
-    /// @brief Get model directory (expand ~)
+protected:
+    // -------------------------------------------------------------------------
+    // Methods derived classes must implement
+    // -------------------------------------------------------------------------
+
+    /// @brief Convert text to token IDs (padded [0, ...ids..., 0]).
+    virtual std::vector<int64_t> textToTokenIds(const std::string& text) = 0;
+
+    /// @brief Model subdirectory name (e.g. "kokoro-v1.0-en").
+    virtual std::string getModelSubdir() const = 0;
+
+    /// @brief Local quantized model file name (e.g. "kokoro-v1.0-en.q.onnx").
+    virtual std::string getModelFile() const = 0;
+
+    /// @brief Language tag passed to the downloader ("en" / "zh").
+    virtual std::string getLanguage() const = 0;
+
+    /// @brief Voice file name without .bin (e.g. "default" / "zf_001").
+    virtual std::string getVoiceName() const = 0;
+
+    /// @brief Semicolon-separated list of generator output convs to keep on the
+    /// CPU float path, removing the metallic timbre introduced by EP int8
+    /// quantization. Node names differ per model version, so the list is
+    /// provided by the derived class. Overridable via the
+    /// SPACEMIT_EP_DISABLE_OP_NAME_FILTER environment variable.
+    virtual std::string getConvFallbackFilter() const = 0;
+
+    /// @brief Language-specific initialization (called once the ONNX session is ready).
+    virtual ErrorInfo initializeLanguageSpecific(const TtsConfig& config) = 0;
+
+    /// @brief Language-specific cleanup.
+    virtual void shutdownLanguageSpecific() {}
+
+    // -------------------------------------------------------------------------
+    // Protected helpers (for derived classes)
+    // -------------------------------------------------------------------------
+
+    /// @brief Model directory with ~ expanded.
     std::string getModelDir() const;
 
-    /// @brief Run ONNX inference
+    const TtsConfig& getConfig() const { return config_; }
+    const KokoroVoiceManager& getVoiceManager() const { return voice_manager_; }
+
+    BackendType type_;
+
+private:
+    std::vector<std::vector<int64_t>> buildInferenceChunks(
+        const std::string& text,
+        const std::vector<int64_t>& full_token_ids);
+
     std::vector<float> runInference(const std::vector<int64_t>& token_ids,
                                     const std::vector<float>& style_vector,
                                     float speed);
 
-    // Components
-    KokoroPhonemizer phonemizer_;
     KokoroVoiceManager voice_manager_;
 
-    // ONNX Runtime
     std::unique_ptr<Ort::Env> env_;
     std::unique_ptr<Ort::Session> session_;
 
-    // State
     TtsConfig config_;
     bool initialized_ = false;
+    bool using_spacemit_ep_ = false;
     float current_speed_ = 1.0f;
 
-    // Thread safety
     mutable std::mutex inference_mutex_;
 };
+
+// Forward declarations
+class KokoroEnBackend;
+class KokoroZhBackend;
 
 }  // namespace tts
 

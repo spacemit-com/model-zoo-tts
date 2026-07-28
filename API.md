@@ -39,7 +39,9 @@ enum class BackendType {
     COSYVOICE,      // CosyVoice（预留）
     VITS,           // VITS（预留）
     PIPER,          // Piper TTS（预留）
-    KOKORO,         // Kokoro TTS（预留）
+    KOKORO,         // Kokoro 英文（兼容旧接口）
+    KOKORO_EN,      // Kokoro v1.0 英文
+    KOKORO_ZH,      // Kokoro v1.1 中文/中英混合
     CUSTOM,         // 自定义后端
 };
 
@@ -61,8 +63,12 @@ struct TtsConfig {
     float speech_rate = 1.0f;           // 语速 (>1.0快, <1.0慢)
     float pitch = 1.0f;                 // 音调
 
-    int num_threads = 2;                // 推理线程数
+    int num_threads = 2;                // 推理线程数（Kokoro 预设为 4）
     bool enable_warmup = true;          // 启动时预热
+    std::string provider = "auto";      // auto / cpu / spacemit
+
+    // Matcha/Kokoro 共用的自定义发音词典
+    std::vector<PronunciationEntry> lexicon;
 
     // 便捷构建方法
     static TtsConfig Preset(const std::string& name);
@@ -328,7 +334,9 @@ class BackendType(Enum):
     COSYVOICE = ...     # CosyVoice（预留）
     VITS = ...          # VITS（预留）
     PIPER = ...         # Piper TTS（预留）
-    KOKORO = ...        # Kokoro TTS（预留）
+    KOKORO = ...        # Kokoro 英文（兼容旧接口）
+    KOKORO_EN = ...     # Kokoro v1.0 英文
+    KOKORO_ZH = ...     # Kokoro v1.1 中文/中英混合
 
 # =============================================================================
 # Config - 配置
@@ -347,7 +355,7 @@ class Config:
 
     @staticmethod
     def preset(name: str) -> "Config":
-        """通过预设名称创建配置 (e.g. 'matcha_zh', 'matcha_en', 'matcha_zh_en', 'kokoro')"""
+        """通过预设名称创建配置（支持 'kokoro'、'kokoro_en'、'kokoro_zh'）"""
 
     @staticmethod
     def available_presets() -> list:
@@ -667,5 +675,5 @@ audio_float = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32
 | COSYVOICE | 多语言 | - | 预留 |
 | VITS | 多语言 | - | 预留 |
 | PIPER | 多语言 | - | 预留 |
-| KOKORO | 多语言 | - | 预留 |
-
+| KOKORO / KOKORO_EN | 英文 | 24000Hz | 已实现 |
+| KOKORO_ZH | 中文/中英混合 | 24000Hz | 已实现 |
