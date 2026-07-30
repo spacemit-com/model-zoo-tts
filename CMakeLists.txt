@@ -39,6 +39,10 @@ set(TTS_SOURCES
     src/backends/matcha/matcha_zh_en_backend.cpp
     src/backends/matcha/tts_model_downloader.cpp
     src/backends/kokoro/kokoro_backend.cpp
+    src/backends/kokoro/kokoro_en_backend.cpp
+    src/backends/kokoro/kokoro_zh_backend.cpp
+    src/backends/kokoro/tone_sandhi.cpp
+    src/backends/kokoro/tone_sandhi_data.cpp
     src/backends/kokoro/kokoro_phonemizer.cpp
     src/backends/kokoro/kokoro_voice_manager.cpp
     src/backends/kokoro/kokoro_model_downloader.cpp

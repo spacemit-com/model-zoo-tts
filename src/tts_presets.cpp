@@ -46,10 +46,31 @@ static const std::map<std::string, std::function<TtsConfig()>>& getPublicPresets
         {"kokoro", []() {
             TtsConfig config;
             config.backend = BackendType::KOKORO;
-            config.model = "kokoro-v1.0.q";
+            config.model = "kokoro-v1.0-en";
             config.model_dir = "~/.cache/models/tts/kokoro-tts";
-            config.voice = "default";
+            config.voice = "af_heart";
             config.sample_rate = 24000;
+            config.num_threads = 4;
+            return config;
+        }},
+        {"kokoro_en", []() {
+            TtsConfig config;
+            config.backend = BackendType::KOKORO_EN;
+            config.model = "kokoro-v1.0-en";
+            config.model_dir = "~/.cache/models/tts/kokoro-tts";
+            config.voice = "af_heart";
+            config.sample_rate = 24000;
+            config.num_threads = 4;
+            return config;
+        }},
+        {"kokoro_zh", []() {
+            TtsConfig config;
+            config.backend = BackendType::KOKORO_ZH;
+            config.model = "kokoro-v1.1-zh";
+            config.model_dir = "~/.cache/models/tts/kokoro-tts";
+            config.voice = "zf_001";
+            config.sample_rate = 24000;
+            config.num_threads = 4;
             return config;
         }},
     };

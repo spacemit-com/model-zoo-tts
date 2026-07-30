@@ -1,54 +1,134 @@
 /* Copyright (C) 2025 SpacemiT Co., Ltd.
- * SPDX-License-Identifier: Apache-2.0 */
+    * SPDX-License-Identifier: Apache-2.0 */
 
 #include "backends/kokoro/kokoro_model_downloader.hpp"
 
 #include <curl/curl.h>
 
+#include <cerrno>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>  // NOLINT(build/c++17)
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <utility>
+#include <vector>
 
 namespace fs = std::filesystem;
 
 namespace tts {
 
-KokoroModelDownloader::KokoroModelDownloader() {
-    const char* home = std::getenv("HOME");
-    if (home) {
-        cache_dir_ = std::string(home) + "/.cache/models/tts/kokoro-tts/";
+KokoroModelDownloader::KokoroModelDownloader(const std::string& cache_dir) {
+    if (!cache_dir.empty()) {
+        cache_dir_ = cache_dir;
     } else {
-        cache_dir_ = "./.cache/models/tts/kokoro-tts/";
+        const char* home = std::getenv("HOME");
+        cache_dir_ = home
+            ? std::string(home) + "/.cache/models/tts/kokoro-tts"
+            : "./.cache/models/tts/kokoro-tts";
+    }
+    while (cache_dir_.size() > 1 && cache_dir_.back() == '/') {
+        cache_dir_.pop_back();
     }
 }
 
-std::string KokoroModelDownloader::getBaseUrl() const {
-    const char* mirror = std::getenv("KOKORO_MIRROR");
-    if (mirror && std::string(mirror) == "huggingface") {
-        return HF_BASE_URL;
-    }
-    return MS_BASE_URL;
+std::string KokoroModelDownloader::archiveName(const std::string& language) const {
+    if (language == "en") return "kokoro-v1.0-en.tar.gz";
+    if (language == "zh") return "kokoro-v1.1-zh.tar.gz";
+    return "";
 }
 
-bool KokoroModelDownloader::ensureModelsExist(const std::string& voice) {
+std::string KokoroModelDownloader::subdirName(const std::string& language) const {
+    if (language == "en") return "kokoro-v1.0-en";
+    if (language == "zh") return "kokoro-v1.1-zh";
+    return "";
+}
+
+std::string KokoroModelDownloader::modelFileRel(const std::string& language) const {
+    if (language == "en") return "kokoro-v1.0-en/kokoro-v1.0-en.q.onnx";
+    if (language == "zh") return "kokoro-v1.1-zh/kokoro-v1.1-zh.q.onnx";
+    return "";
+}
+
+namespace {
+
+bool fileReady(const std::string& path, uintmax_t minimum_size) {
+    std::error_code ec;
+    return fs::is_regular_file(path, ec) && !ec &&
+        fs::file_size(path, ec) >= minimum_size && !ec;
+}
+
+}  // namespace
+
+bool KokoroModelDownloader::validateRequiredFiles(const std::string& language) const {
+    std::vector<std::pair<std::string, uintmax_t>> files;
+    if (language == "en") {
+        files = {
+            {"kokoro-v1.0-en/kokoro-v1.0-en.q.onnx", 1024U * 1024U},
+            {"kokoro-v1.0-en/voices/af_heart.bin", 1024U},
+            {"kokoro-v1.0-en/us_gold.json", 1024U},
+            {"kokoro-v1.0-en/us_silver.json", 1024U},
+        };
+    } else if (language == "zh") {
+        files = {
+            {"kokoro-v1.1-zh/kokoro-v1.1-zh.q.onnx", 1024U * 1024U},
+            {"kokoro-v1.1-zh/tokenizer.json", 128U},
+            {"kokoro-v1.1-zh/config.json", 32U},
+            {"kokoro-v1.1-zh/voices/zf_001.npy", 1024U},
+            {"kokoro-v1.1-zh/us_gold.json", 1024U},
+            {"kokoro-v1.1-zh/us_silver.json", 1024U},
+        };
+    } else {
+        return false;
+    }
+
+    bool ready = true;
+    for (const auto& file : files) {
+        const std::string path = cache_dir_ + "/" + file.first;
+        if (!fileReady(path, file.second)) {
+            std::cerr << "[Kokoro] Missing or incomplete required file: "
+                        << path << std::endl;
+            ready = false;
+        }
+    }
+    return ready;
+}
+
+bool KokoroModelDownloader::ensureModelsExist(const std::string& language) {
     if (!ensureCacheDir()) {
         return false;
     }
 
-    // Ensure ONNX model exists
-    if (!downloadModel()) {
+    const std::string subdir = subdirName(language);
+    if (subdir.empty()) {
+        std::cerr << "[Kokoro] Unsupported language: " << language << std::endl;
         return false;
     }
 
-    // Ensure voice file exists
-    if (!downloadVoice(voice)) {
+    if (validateRequiredFiles(language)) {
+        std::cout << "[Kokoro] All required files for " << language
+                    << " are ready in " << cache_dir_ + "/" + subdir << std::endl;
+        return true;
+    }
+
+    if (!downloadLanguageModel(language)) {
+        std::cerr << "[Kokoro] Failed to download " << language << " model package" << std::endl;
         return false;
     }
 
-    std::cout << "[Kokoro] All models are ready!" << std::endl;
+    if (!validateRequiredFiles(language)) {
+        std::cerr << "[Kokoro] Package validation failed after extracting "
+                    << archiveName(language) << std::endl;
+        return false;
+    }
+
+    std::cout << "[Kokoro] All required files for " << language
+                << " are ready in " << cache_dir_ + "/" + subdir << std::endl;
     return true;
 }
 
@@ -56,11 +136,6 @@ bool KokoroModelDownloader::ensureCacheDir() {
     try {
         if (!fs::exists(cache_dir_)) {
             fs::create_directories(cache_dir_);
-        }
-        // Also create voices subdirectory
-        std::string voices_dir = cache_dir_ + "voices/";
-        if (!fs::exists(voices_dir)) {
-            fs::create_directories(voices_dir);
         }
         return true;
     } catch (const std::exception& e) {
@@ -120,8 +195,9 @@ bool KokoroModelDownloader::downloadFile(const std::string& url, const std::stri
 #endif
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "kokoro-tts/1.0");
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
 
     CURLcode res = curl_easy_perform(curl);
 
@@ -147,70 +223,79 @@ bool KokoroModelDownloader::downloadFile(const std::string& url, const std::stri
     return true;
 }
 
-bool KokoroModelDownloader::downloadModel() {
-    std::string model_path = cache_dir_ + MODEL_FILE;
-    if (fs::exists(model_path) && fs::file_size(model_path) > 1024) {
-        return true;
-    }
-    // Remove corrupted/incomplete file
-    if (fs::exists(model_path)) {
-        fs::remove(model_path);
-    }
-
-    std::string url = getBaseUrl() + "/" + MODEL_URL_PATH;
-    std::cout << "[Kokoro] Downloading model from " << url << " ..." << std::endl;
-
-    if (!downloadFile(url, model_path)) {
-        std::cerr << "[Kokoro] Failed to download model" << std::endl;
+bool KokoroModelDownloader::extractTarArchive(const std::string& archive_path) {
+    const pid_t child = fork();
+    if (child < 0) {
+        std::perror("[Kokoro] fork failed while extracting archive");
         return false;
     }
+    if (child == 0) {
+        execlp("tar", "tar", "-xzf", archive_path.c_str(), "-C",
+                cache_dir_.c_str(), static_cast<char*>(nullptr));
+        std::perror("[Kokoro] failed to execute tar");
+        _exit(127);
+    }
 
-    std::cout << "[Kokoro] Model downloaded successfully!" << std::endl;
+    int status = 0;
+    pid_t waited;
+    do {
+        waited = waitpid(child, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0) {
+        std::perror("[Kokoro] waitpid failed while extracting archive");
+        return false;
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        if (WIFEXITED(status)) {
+            std::cerr << "[Kokoro] tar exited with status "
+                        << WEXITSTATUS(status) << std::endl;
+        } else if (WIFSIGNALED(status)) {
+            std::cerr << "[Kokoro] tar terminated by signal "
+                        << WTERMSIG(status) << std::endl;
+        }
+        return false;
+    }
     return true;
 }
 
-bool KokoroModelDownloader::downloadVoice(const std::string& voice) {
-    // Determine the actual voice file to download
-    std::string voice_file = voice;
-    if (voice == "default") {
-        voice_file = DEFAULT_VOICE;  // zf_xiaobei.bin
-    } else if (voice.find(".bin") == std::string::npos) {
-        voice_file = voice + ".bin";
+bool KokoroModelDownloader::downloadLanguageModel(const std::string& language) {
+    std::string archive = archiveName(language);
+    if (archive.empty()) {
+        std::cerr << "[Kokoro] Unknown language: " << language << std::endl;
+        return false;
     }
 
-    std::string voice_path = cache_dir_ + "voices/" + voice_file;
+    std::string url = std::string(BASE_URL) + "/" + archive;
+    std::string archive_path = cache_dir_ + "/" + archive;
+    std::string partial_path = archive_path + ".part";
+    std::error_code ec;
+    fs::remove(partial_path, ec);
 
-    // Remove corrupted/incomplete voice file
-    if (fs::exists(voice_path) && fs::file_size(voice_path) <= 1024) {
-        fs::remove(voice_path);
+    std::cout << "[Kokoro] Downloading " << language << " model from " << url << " ..." << std::endl;
+    if (!downloadFile(url, partial_path)) {
+        fs::remove(partial_path, ec);
+        return false;
+    }
+    fs::rename(partial_path, archive_path, ec);
+    if (ec) {
+        std::cerr << "[Kokoro] Failed to finalize downloaded archive: "
+                    << ec.message() << std::endl;
+        fs::remove(partial_path, ec);
+        return false;
     }
 
-    // Download the voice file if it doesn't exist
-    if (!fs::exists(voice_path)) {
-        std::string url = getBaseUrl() + "/voices/" + voice_file;
-        std::cout << "[Kokoro] Downloading voice '" << voice_file << "' from " << url << " ..." << std::endl;
-
-        if (!downloadFile(url, voice_path)) {
-            std::cerr << "[Kokoro] Failed to download voice: " << voice_file << std::endl;
-            return false;
-        }
-
-        std::cout << "[Kokoro] Voice downloaded successfully!" << std::endl;
+    std::cout << "[Kokoro] Extracting " << archive << " ..." << std::endl;
+    if (!extractTarArchive(archive_path)) {
+        std::cerr << "[Kokoro] Failed to extract " << archive << std::endl;
+        fs::remove(archive_path, ec);
+        return false;
     }
 
-    // If voice is "default", also create default.bin as a copy
-    if (voice == "default") {
-        std::string default_path = cache_dir_ + "voices/default.bin";
-        if (!fs::exists(default_path)) {
-            try {
-                fs::copy_file(voice_path, default_path);
-            } catch (const std::exception& e) {
-                std::cerr << "[Kokoro] Failed to create default.bin: " << e.what() << std::endl;
-                return false;
-            }
-        }
+    fs::remove(archive_path, ec);
+    if (!validateRequiredFiles(language)) {
+        return false;
     }
-
+    std::cout << "[Kokoro] " << language << " model downloaded and extracted successfully!" << std::endl;
     return true;
 }
 

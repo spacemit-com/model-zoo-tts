@@ -46,7 +46,9 @@ enum class BackendType {
     COSYVOICE,
     VITS,
     PIPER,
-    KOKORO,
+    KOKORO,          // 兼容旧名, 等价于 KOKORO_EN
+    KOKORO_EN,       // 英文 kokoro-v1.0-en 24000Hz
+    KOKORO_ZH,       // 中文 kokoro-v1.1-zh 24000Hz
     CUSTOM,
 };
 

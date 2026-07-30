@@ -7,6 +7,8 @@
 #include <vector>
 
 #include "backends/kokoro/kokoro_backend.hpp"
+#include "backends/kokoro/kokoro_en_backend.hpp"
+#include "backends/kokoro/kokoro_zh_backend.hpp"
 #include "backends/matcha/matcha_backend.hpp"
 #include "backends/matcha/matcha_en_backend.hpp"
 #include "backends/matcha/matcha_zh_backend.hpp"
@@ -29,8 +31,12 @@ std::unique_ptr<ITtsBackend> TtsBackendFactory::create(BackendType type) {
         case BackendType::MATCHA_ZH_EN:
             return std::make_unique<MatchaZhEnBackend>();
 
-        case BackendType::KOKORO:
-            return std::make_unique<KokoroBackend>();
+        case BackendType::KOKORO:      // 兼容旧名, 默认英文
+        case BackendType::KOKORO_EN:
+            return std::make_unique<KokoroEnBackend>();
+
+        case BackendType::KOKORO_ZH:
+            return std::make_unique<KokoroZhBackend>();
 
         case BackendType::COSYVOICE:
         case BackendType::VITS:
@@ -50,6 +56,8 @@ bool TtsBackendFactory::isAvailable(BackendType type) {
         case BackendType::MATCHA_EN:
         case BackendType::MATCHA_ZH_EN:
         case BackendType::KOKORO:
+        case BackendType::KOKORO_EN:
+        case BackendType::KOKORO_ZH:
             return true;
 
         default:
@@ -62,7 +70,8 @@ std::vector<BackendType> TtsBackendFactory::getAvailableBackends() {
         BackendType::MATCHA_ZH,
         BackendType::MATCHA_EN,
         BackendType::MATCHA_ZH_EN,
-        BackendType::KOKORO
+        BackendType::KOKORO_EN,
+        BackendType::KOKORO_ZH
     };
 }
 
