@@ -34,6 +34,8 @@ protected:
     std::string getVoiceName() const override;
     std::string getConvFallbackFilter() const override;
     ErrorInfo initializeLanguageSpecific(const TtsConfig& config) override;
+    ErrorInfo updateLanguageLexicon(
+        const std::vector<LexiconEntry>& entries) override;
 
 private:
     KokoroPhonemizer phonemizer_;

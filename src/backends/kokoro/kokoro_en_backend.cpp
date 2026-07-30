@@ -12,6 +12,24 @@ KokoroEnBackend::KokoroEnBackend() : KokoroBackend(BackendType::KOKORO_EN) {}
 
 KokoroEnBackend::~KokoroEnBackend() = default;
 
+ErrorInfo KokoroEnBackend::updateLanguageLexicon(
+    const std::vector<LexiconEntry>& entries) {
+    for (const auto& entry : entries) {
+        if (entry.locale != "en") {
+            return ErrorInfo::error(
+                ErrorCode::UNSUPPORTED_LANGUAGE,
+                "Kokoro English lexicon entries require locale=en");
+        }
+        if (!phonemizer_.addEnglishPronunciation(
+                entry.word, entry.phoneme)) {
+            return ErrorInfo::error(
+                ErrorCode::INVALID_CONFIG,
+                "Invalid Kokoro English lexicon entry: " + entry.word);
+        }
+    }
+    return ErrorInfo::ok();
+}
+
 std::string KokoroEnBackend::getModelSubdir() const { return "kokoro-v1.0-en"; }
 
 std::string KokoroEnBackend::getModelFile() const { return "kokoro-v1.0-en.q.onnx"; }

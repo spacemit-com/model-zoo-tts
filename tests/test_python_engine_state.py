@@ -59,11 +59,18 @@ def _load_engine_module(monkeypatch):
                 "kokoro_zh",
             ]
 
+    class FakePronunciationEntry:
+        def __init__(self, word, phoneme, locale="zh"):
+            self.word = word
+            self.phoneme = phoneme
+            self.locale = locale
+
     class FakeNativeEngine:
         def __init__(self, config):
             self.config = config
             self.initialized = True
             self.shutdown_calls = 0
+            self.lexicon_updates = []
 
         def shutdown(self):
             self.shutdown_calls += 1
@@ -72,11 +79,15 @@ def _load_engine_module(monkeypatch):
         def is_initialized(self):
             return self.initialized
 
+        def update_lexicon(self, entries):
+            self.lexicon_updates.append(entries)
+
     fake_tts = types.SimpleNamespace(
         BackendType=NativeBackendType,
         AudioFormat=NativeAudioFormat,
         TtsConfig=FakeTtsConfig,
         TtsEngine=FakeNativeEngine,
+        PronunciationEntry=FakePronunciationEntry,
     )
     monkeypatch.setitem(sys.modules, "spacemit_tts", package)
     monkeypatch.setitem(sys.modules, "spacemit_tts._spacemit_tts", fake_tts)
@@ -137,3 +148,28 @@ def test_config_preserves_explicit_model_root(monkeypatch, tmp_path):
     )
 
     assert Path(config.model_dir) == tmp_path
+
+
+def test_kokoro_update_lexicon_reaches_native_engine(monkeypatch):
+    engine_module = _load_engine_module(monkeypatch)
+    engine = engine_module.Engine(
+        engine_module.Config.preset("kokoro_zh"))
+
+    engine.update_lexicon([
+        {"word": "为你", "phoneme": "wei4 ni3"},
+        {
+            "word": "SpaceMIT",
+            "phoneme": "space meet",
+            "locale": "en",
+        },
+    ])
+
+    updates = engine._engine.lexicon_updates
+    assert len(updates) == 1
+    assert [
+        (entry.word, entry.phoneme, entry.locale)
+        for entry in updates[0]
+    ] == [
+        ("为你", "wei4 ni3", "zh"),
+        ("SpaceMIT", "space meet", "en"),
+    ]

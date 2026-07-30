@@ -89,9 +89,10 @@ private:
     ToneSandhi tone_sandhi_;
     KokoroPhonemizer english_frontend_;
 
-    std::unordered_map<std::string, int64_t> token_to_id_;   // tokens.txt
-    std::unordered_map<std::string, std::string> lexicon_;   // lexicon-zh.txt (optional cache)
-    int64_t separator_id_ = -1;                              // id of "/"
+    std::unordered_map<std::string, int64_t> token_to_id_;  // tokens.txt
+    std::unordered_map<std::string, std::string> lexicon_;  // lexicon-zh.txt (optional cache)
+    std::unordered_map<std::string, std::string> custom_zh_lexicon_;
+    int64_t separator_id_ = -1;                             // id of "/"
 
     std::unordered_map<std::string, std::string> zh_map_;    // pinyin->bopomofo
 };

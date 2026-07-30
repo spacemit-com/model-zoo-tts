@@ -297,6 +297,74 @@ std::string normalizeZeroInitialFinal(const std::string& syl) {
     return syl;
 }
 
+bool parsePinyinPronunciation(
+    const std::string& pronunciation,
+    std::vector<std::string>& initials,
+    std::vector<std::string>& finals) {
+    std::istringstream input(pronunciation);
+    std::string syllable;
+    while (input >> syllable) {
+        if (syllable.empty() || syllable.back() < '1' ||
+            syllable.back() > '5') {
+            return false;
+        }
+        const char tone = syllable.back();
+        syllable.pop_back();
+        if (syllable.empty()) return false;
+
+        std::string initial;
+        std::string final;
+        for (const auto& prefix : {"zh", "ch", "sh", "b", "p", "m",
+                "f", "d", "t", "n", "l", "g", "k", "h", "j", "q",
+                "x", "r", "z", "c", "s"}) {
+            const size_t prefix_length = strlen(prefix);
+            if (syllable.size() > prefix_length &&
+                syllable.compare(0, prefix_length, prefix) == 0) {
+                initial = prefix;
+                final = syllable.substr(prefix_length);
+                break;
+            }
+        }
+        if (initial.empty()) {
+            initial = " ";
+            final = normalizeZeroInitialFinal(syllable);
+        }
+        if (initial == "j" || initial == "q" || initial == "x") {
+            if (final == "u")
+                final = "v";
+            else if (final == "un")
+                final = "vn";
+            else if (final == "ue")
+                final = "ve";
+            else if (final == "uan")
+                final = "van";
+            else
+                final = expandContractedFinal(final);
+        } else if (initial != " ") {
+            final = expandContractedFinal(final);
+        }
+        if (final == "i") {
+            if (initial == "z" || initial == "c" || initial == "s")
+                final = "ii";
+            else if (initial == "zh" || initial == "ch" ||
+                    initial == "sh" || initial == "r")
+                final = "iii";
+        }
+        initials.push_back(initial);
+        finals.push_back(final + tone);
+    }
+    return !initials.empty();
+}
+
+std::string alphaIndex(size_t index) {
+    std::string value;
+    do {
+        value.push_back(static_cast<char>('A' + index % 26));
+        index /= 26;
+    } while (index != 0);
+    return value;
+}
+
 }  // namespace
 
 KokoroZhBackend::KokoroZhBackend() : KokoroBackend(BackendType::KOKORO_ZH) {}
@@ -428,6 +496,7 @@ void KokoroZhBackend::shutdownLanguageSpecific() {
     jieba_.reset();
     pinyin_.reset();
     lexicon_.clear();
+    custom_zh_lexicon_.clear();
     token_to_id_.clear();
     zh_map_.clear();
 }
@@ -437,7 +506,8 @@ ErrorInfo KokoroZhBackend::updateLanguageLexicon(
     for (const auto& entry : entries) {
         if (entry.word.empty() || entry.phoneme.empty()) {
             return ErrorInfo::error(
-                ErrorCode::INVALID_CONFIG, "Kokoro lexicon entry is empty");
+                ErrorCode::INVALID_CONFIG,
+                "Kokoro lexicon word and phoneme must not be empty");
         }
         if (entry.locale == "en") {
             if (!english_frontend_.addEnglishPronunciation(
@@ -448,27 +518,21 @@ ErrorInfo KokoroZhBackend::updateLanguageLexicon(
             }
             continue;
         }
-
-        std::istringstream stream(entry.phoneme);
-        std::vector<std::string> syllables;
-        for (std::string syllable; stream >> syllable;) {
-            if (syllable.empty() || syllable.back() < '0' ||
-                syllable.back() > '5') {
-                return ErrorInfo::error(
-                    ErrorCode::INVALID_CONFIG,
-                    "Kokoro Chinese pronunciation must use tone-number pinyin: " +
-                    entry.word);
-            }
-            syllables.push_back(syllable);
+        if (!entry.locale.empty() && entry.locale != "zh") {
+            return ErrorInfo::error(
+                ErrorCode::UNSUPPORTED_LANGUAGE,
+                "Kokoro Chinese lexicon locale must be zh or en");
         }
-        const auto characters = utf8Chars(entry.word);
-        if (syllables.size() != characters.size()) {
+        std::vector<std::string> initials;
+        std::vector<std::string> finals;
+        if (!parsePinyinPronunciation(
+                entry.phoneme, initials, finals) ||
+            initials.size() != utf8Chars(entry.word).size()) {
             return ErrorInfo::error(
                 ErrorCode::INVALID_CONFIG,
-                "Kokoro Chinese lexicon syllable count does not match word: " +
-                entry.word);
+                "Invalid Kokoro Chinese pinyin entry: " + entry.word);
         }
-        lexicon_[entry.word] = entry.phoneme;
+        custom_zh_lexicon_[entry.word] = entry.phoneme;
         if (jieba_) jieba_->InsertUserWord(entry.word);
     }
     return ErrorInfo::ok();
@@ -776,6 +840,31 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
     // Fallback for any numeric run the FST intentionally left untouched.
     processed = normalizeArabicNumbers(processed);
 
+    // Replace custom Chinese entries with ASCII placeholders before Jieba.
+    // This preserves exact multi-character matches even when Jieba would split
+    // the word differently. The placeholder is converted back to the forced
+    // pinyin after POS tagging.
+    std::vector<std::pair<std::string, std::string>> custom_entries(
+        custom_zh_lexicon_.begin(), custom_zh_lexicon_.end());
+    std::sort(custom_entries.begin(), custom_entries.end(),
+        [](const auto& left, const auto& right) {
+            return left.first.size() > right.first.size();
+        });
+    std::unordered_map<std::string, std::string> custom_placeholders;
+    for (size_t i = 0; i < custom_entries.size(); ++i) {
+        const std::string placeholder =
+            "KokoroCustomLexicon" + alphaIndex(i);
+        size_t position = 0;
+        while ((position = processed.find(
+                    custom_entries[i].first, position)) !=
+                std::string::npos) {
+            processed.replace(
+                position, custom_entries[i].first.size(), placeholder);
+            position += placeholder.size();
+        }
+        custom_placeholders[placeholder] = custom_entries[i].second;
+    }
+
     // 1. Jieba POS tagging
     std::vector<std::pair<std::string, std::string>> seg_cut;
     jieba_->Tag(processed, seg_cut);
@@ -806,6 +895,12 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
         bool has_cjk = std::any_of(
             word_chars.begin(), word_chars.end(),
             [](const std::string& ch) { return text::isChineseChar(ch); });
+        const auto custom = custom_placeholders.find(word);
+        if (custom != custom_placeholders.end()) {
+            // Treat the placeholder as a Chinese word so it follows the same
+            // separator path, then emit the caller-provided tones unchanged.
+            has_cjk = true;
+        }
         if ((pos == "x" || pos == "eng") && !has_cjk) {
             const bool has_ascii_letter = std::any_of(
                 word.begin(), word.end(),
@@ -862,14 +957,16 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
         first_word = false;
         previous_numeric_expression = current_numeric_expression;
 
-        // Get initials + finals via cpp-pinyin
-        auto [initials, finals] = getInitialsFinals(word);
-
-        // Apply ToneSandhi
-        finals = tone_sandhi_.modifiedTone(word, pos, finals);
-
-        // Merge erhua
-        std::tie(initials, finals) = mergeErhua(initials, finals, word, pos);
+        std::vector<std::string> initials;
+        std::vector<std::string> finals;
+        if (custom != custom_placeholders.end()) {
+            parsePinyinPronunciation(custom->second, initials, finals);
+        } else {
+            std::tie(initials, finals) = getInitialsFinals(word);
+            finals = tone_sandhi_.modifiedTone(word, pos, finals);
+            std::tie(initials, finals) =
+                mergeErhua(initials, finals, word, pos);
+        }
 
         // Convert to bopomofo via ZH_MAP, then to token IDs
         for (size_t i = 0; i < initials.size() && i < finals.size(); ++i) {
