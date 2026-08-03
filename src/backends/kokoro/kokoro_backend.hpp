@@ -40,11 +40,12 @@ class KokoroBackend : public ITtsBackend {
 public:
     static constexpr int SAMPLE_RATE = 24000;
     static constexpr int MAX_TOKEN_LENGTH = 512;
-    // Warmup sequence length (~45 Chinese chars). The ORT arena grows with output
-    // size, so warming at this length lets the first real request of a typical
-    // sentence run at steady-state RTF instead of paying cold-start arena growth.
-    // Overridable via SPACEMIT_TTS_WARMUP_TOKENS for longer inputs.
+    // Synthetic-token defaults are only used when the explicit benchmarking
+    // override is malformed. Production warmup uses valid frontend text.
     static constexpr int WARMUP_TOKEN_LENGTH = 128;
+    static constexpr int EN_WARMUP_TOKEN_LENGTH = 4;
+    static constexpr int EN_EP_WARMUP_EFFECTIVE_TOKENS = 64;
+    static constexpr int ZH_EP_WARMUP_EFFECTIVE_TOKENS = 63;
 
     explicit KokoroBackend(BackendType type);
     ~KokoroBackend() override;
@@ -67,6 +68,7 @@ public:
     ErrorInfo synthesize(const std::string& text, SynthesisResult& result) override;
 
     ErrorInfo setSpeed(float speed) override;
+    ErrorInfo updateLexicon(const std::vector<LexiconEntry>& entries) override;
 
 protected:
     // -------------------------------------------------------------------------
@@ -75,6 +77,11 @@ protected:
 
     /// @brief Convert text to token IDs (padded [0, ...ids..., 0]).
     virtual std::vector<int64_t> textToTokenIds(const std::string& text) = 0;
+
+    /// @brief Return language-aware units used only for an oversized clause.
+    /// English keeps whole words; Chinese overrides this with cppjieba words.
+    virtual std::vector<std::string> getChunkingUnits(
+        const std::string& text);
 
     /// @brief Model subdirectory name (e.g. "kokoro-v1.0-en").
     virtual std::string getModelSubdir() const = 0;
@@ -101,12 +108,17 @@ protected:
     /// @brief Language-specific cleanup.
     virtual void shutdownLanguageSpecific() {}
 
+    /// @brief Apply language-specific custom pronunciations.
+    virtual ErrorInfo updateLanguageLexicon(
+        const std::vector<LexiconEntry>& entries) = 0;
+
     // -------------------------------------------------------------------------
     // Protected helpers (for derived classes)
     // -------------------------------------------------------------------------
 
     /// @brief Model directory with ~ expanded.
     std::string getModelDir() const;
+    const std::string& getActiveModelDir() const { return active_model_dir_; }
 
     const TtsConfig& getConfig() const { return config_; }
     const KokoroVoiceManager& getVoiceManager() const { return voice_manager_; }
@@ -114,10 +126,6 @@ protected:
     BackendType type_;
 
 private:
-    std::vector<std::vector<int64_t>> buildInferenceChunks(
-        const std::string& text,
-        const std::vector<int64_t>& full_token_ids);
-
     std::vector<float> runInference(const std::vector<int64_t>& token_ids,
                                     const std::vector<float>& style_vector,
                                     float speed);
@@ -128,8 +136,11 @@ private:
     std::unique_ptr<Ort::Session> session_;
 
     TtsConfig config_;
+    std::string active_model_dir_;
+    std::string active_model_path_;
     bool initialized_ = false;
     bool using_spacemit_ep_ = false;
+    int ep_threads_ = 4;
     float current_speed_ = 1.0f;
 
     mutable std::mutex inference_mutex_;
