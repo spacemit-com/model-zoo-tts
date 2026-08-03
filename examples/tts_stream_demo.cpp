@@ -679,6 +679,11 @@ int main(int argc, char* argv[]) {
     config.backend = selection.backend;
     config.sample_rate = sample_rate;
     config.provider = provider;
+    if (selection.backend == SpacemiT::BackendType::KOKORO ||
+        selection.backend == SpacemiT::BackendType::KOKORO_EN ||
+        selection.backend == SpacemiT::BackendType::KOKORO_ZH) {
+        config.num_threads = 4;
+    }
 
     if (!voice.empty()) {
         if (selection.backend != SpacemiT::BackendType::KOKORO &&

@@ -355,6 +355,7 @@ int main(int argc, char* argv[]) {
         case SpacemiT::BackendType::KOKORO_EN:
         case SpacemiT::BackendType::KOKORO_ZH:
             config.sample_rate = 24000;
+            config.num_threads = 4;
             break;
         default:
             config.sample_rate = 22050;
