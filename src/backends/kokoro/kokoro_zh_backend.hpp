@@ -1,10 +1,11 @@
 /* Copyright (C) 2025 SpacemiT Co., Ltd.
-    * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: Apache-2.0 */
 
 #ifndef KOKORO_ZH_BACKEND_HPP
 #define KOKORO_ZH_BACKEND_HPP
 
 #include <cstdint>
+
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -15,12 +16,8 @@
 #include "backends/kokoro/tone_sandhi.hpp"
 
 // Forward declarations
-namespace cppjieba {
-class Jieba;
-}
-namespace Pinyin {
-class Pinyin;
-}
+namespace cppjieba { class Jieba; }
+namespace Pinyin { class Pinyin; }
 
 namespace tts {
 
@@ -51,6 +48,8 @@ public:
 
 protected:
     std::vector<int64_t> textToTokenIds(const std::string& text) override;
+    std::vector<std::string> getChunkingUnits(
+        const std::string& text) override;
     std::string getModelSubdir() const override;
     std::string getModelFile() const override;
     std::string getLanguage() const override;
@@ -58,37 +57,43 @@ protected:
     std::string getConvFallbackFilter() const override;
     ErrorInfo initializeLanguageSpecific(const TtsConfig& config) override;
     void shutdownLanguageSpecific() override;
+    ErrorInfo updateLanguageLexicon(
+        const std::vector<LexiconEntry>& entries) override;
 
 private:
-    bool loadTokenizerJson(const std::string& path);
     void initializeJieba(const std::string& dict_dir);
     void initializePinyin();
     void initializeToneSandhi();
+    bool loadTokenizerJson(const std::string& path);
 
     // Split a word into UTF-8 characters.
     std::vector<std::string> utf8Chars(const std::string& s);
 
     // Get initials and finals (TONE3) for a word via cpp-pinyin.
     // Returns (initials, finals) both size == #chars.
-    std::pair<std::vector<std::string>, std::vector<std::string>> getInitialsFinals(const std::string& word);
+    std::pair<std::vector<std::string>, std::vector<std::string>>
+        getInitialsFinals(const std::string& word);
 
     // misaki _merge_erhua: merge trailing "儿" into previous final as "XRY".
-    std::pair<std::vector<std::string>, std::vector<std::string>> mergeErhua(std::vector<std::string> initials,
-        std::vector<std::string> finals, const std::string& word, const std::string& pos);
+    std::pair<std::vector<std::string>, std::vector<std::string>>
+        mergeErhua(std::vector<std::string> initials,
+                    std::vector<std::string> finals,
+                    const std::string& word,
+                    const std::string& pos);
 
     // Pinyin -> Bopomofo mapping (misaki ZH_MAP).
     std::string zhMap(const std::string& pinyin);
 
     std::unique_ptr<cppjieba::Jieba> jieba_;
     std::unique_ptr<Pinyin::Pinyin> pinyin_;
-    KokoroPhonemizer english_phonemizer_;
     ToneSandhi tone_sandhi_;
+    KokoroPhonemizer english_frontend_;
 
-    std::unordered_map<std::string, int64_t> token_to_id_;  // tokens.txt
-    std::unordered_map<std::string, std::string> lexicon_;  // lexicon-zh.txt (optional cache)
-    int64_t separator_id_ = -1;                             // id of "/"
+    std::unordered_map<std::string, int64_t> token_to_id_;   // tokens.txt
+    std::unordered_map<std::string, std::string> lexicon_;   // lexicon-zh.txt (optional cache)
+    int64_t separator_id_ = -1;                              // id of "/"
 
-    std::unordered_map<std::string, std::string> zh_map_;  // pinyin->bopomofo
+    std::unordered_map<std::string, std::string> zh_map_;    // pinyin->bopomofo
 };
 
 }  // namespace tts
