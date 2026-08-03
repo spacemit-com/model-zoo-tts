@@ -1,8 +1,9 @@
 /* Copyright (C) 2025 SpacemiT Co., Ltd.
-    * SPDX-License-Identifier: Apache-2.0 */
+ * SPDX-License-Identifier: Apache-2.0 */
 
 #include "backends/kokoro/kokoro_zh_backend.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <filesystem>  // NOLINT(build/c++17)
@@ -10,16 +11,16 @@
 #include <iostream>
 #include <regex>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "backends/matcha/tts_model_downloader.hpp"
-#include "cpp-pinyin/G2pglobal.h"
-#include "cpp-pinyin/Pinyin.h"
 #include "cppjieba/Jieba.hpp"
+#include "cpp-pinyin/Pinyin.h"
+#include "cpp-pinyin/G2pglobal.h"
+#include "backends/matcha/tts_model_downloader.hpp"
+#include "text/text_normalizer.hpp"
 #include "text/text_utils.hpp"
 #include "text/token_utils.hpp"
 
@@ -30,19 +31,21 @@ namespace tts {
 namespace {
 // misaki ZH_MAP: pinyin syllable/initial/final/tone -> bopomofo
 const std::unordered_map<std::string, std::string> ZH_MAP_DATA = {
-    {"b", "ㄅ"}, {"p", "ㄆ"}, {"m", "ㄇ"}, {"f", "ㄈ"}, {"d", "ㄉ"}, {"t", "ㄊ"}, {"n", "ㄋ"}, {"l", "ㄌ"}, {"g", "ㄍ"},
-    {"k", "ㄎ"}, {"h", "ㄏ"}, {"j", "ㄐ"}, {"q", "ㄑ"}, {"x", "ㄒ"}, {"zh", "ㄓ"}, {"ch", "ㄔ"}, {"sh", "ㄕ"},
-    {"r", "ㄖ"}, {"z", "ㄗ"}, {"c", "ㄘ"}, {"s", "ㄙ"}, {"a", "ㄚ"}, {"o", "ㄛ"}, {"e", "ㄜ"}, {"ie", "ㄝ"},
-    {"ai", "ㄞ"}, {"ei", "ㄟ"}, {"ao", "ㄠ"}, {"ou", "ㄡ"}, {"an", "ㄢ"}, {"en", "ㄣ"}, {"ang", "ㄤ"}, {"eng", "ㄥ"},
-    {"er", "ㄦ"}, {"i", "ㄧ"}, {"u", "ㄨ"}, {"v", "ㄩ"}, {"ii", "ㄭ"}, {"iii", "十"}, {"ve", "月"}, {"ia", "压"},
-    {"ian", "言"}, {"iang", "阳"}, {"iao", "要"}, {"in", "阴"}, {"ing", "应"}, {"iong", "用"}, {"iou", "又"},
-    {"ong", "中"}, {"ua", "穵"}, {"uai", "外"}, {"uan", "万"}, {"uang", "王"}, {"uei", "为"}, {"uen", "文"},
-    {"ueng", "瓮"}, {"uo", "我"}, {"van", "元"}, {"vn", "云"},
+    {"b", "ㄅ"}, {"p", "ㄆ"}, {"m", "ㄇ"}, {"f", "ㄈ"}, {"d", "ㄉ"}, {"t", "ㄊ"}, {"n", "ㄋ"}, {"l", "ㄌ"},
+    {"g", "ㄍ"}, {"k", "ㄎ"}, {"h", "ㄏ"}, {"j", "ㄐ"}, {"q", "ㄑ"}, {"x", "ㄒ"}, {"zh", "ㄓ"}, {"ch", "ㄔ"},
+    {"sh", "ㄕ"}, {"r", "ㄖ"}, {"z", "ㄗ"}, {"c", "ㄘ"}, {"s", "ㄙ"},
+    {"a", "ㄚ"}, {"o", "ㄛ"}, {"e", "ㄜ"}, {"ie", "ㄝ"}, {"ai", "ㄞ"}, {"ei", "ㄟ"}, {"ao", "ㄠ"}, {"ou", "ㄡ"},
+    {"an", "ㄢ"}, {"en", "ㄣ"}, {"ang", "ㄤ"}, {"eng", "ㄥ"}, {"er", "ㄦ"},
+    {"i", "ㄧ"}, {"u", "ㄨ"}, {"v", "ㄩ"}, {"ii", "ㄭ"}, {"iii", "十"}, {"ve", "月"},
+    {"ia", "压"}, {"ian", "言"}, {"iang", "阳"}, {"iao", "要"}, {"in", "阴"}, {"ing", "应"}, {"iong", "用"},
+    {"iou", "又"}, {"ong", "中"}, {"ua", "穵"}, {"uai", "外"}, {"uan", "万"}, {"uang", "王"}, {"uei", "为"},
+    {"uen", "文"}, {"ueng", "瓮"}, {"uo", "我"}, {"van", "元"}, {"vn", "云"},
     // Punctuation passthrough
-    {";", ";"}, {":", ";"}, {",", ","}, {".", "。"}, {"!", "!"}, {"?", "?"}, {"—", "—"}, {"…", "…"}, {"\"", "\""},
-    {"(", "("}, {")", ")"}, {" ", " "},
+    {";", ";"}, {":", ";"}, {",", ","}, {".", "。"}, {"!", "!"}, {"?", "?"}, {"—", "—"}, {"…", "…"},
+    {"\"", "\""}, {"(", "("}, {")", ")"}, {" ", " "},
     // Tone digits passthrough
-    {"0", "0"}, {"1", "1"}, {"2", "2"}, {"3", "3"}, {"4", "4"}, {"5", "5"}, {"R", "R"}  // erhua marker
+    {"0", "0"}, {"1", "1"}, {"2", "2"}, {"3", "3"}, {"4", "4"}, {"5", "5"},
+    {"R", "R"}  // erhua marker
 };
 
 // Split UTF-8 string into character vector
@@ -51,12 +54,9 @@ std::vector<std::string> utf8CharsHelper(const std::string& s) {
     for (size_t i = 0; i < s.size();) {
         unsigned char c = static_cast<unsigned char>(s[i]);
         size_t len = 1;
-        if (c >= 0xF0)
-            len = 4;
-        else if (c >= 0xE0)
-            len = 3;
-        else if (c >= 0xC0)
-            len = 2;
+        if (c >= 0xF0) len = 4;
+        else if (c >= 0xE0) len = 3;
+        else if (c >= 0xC0) len = 2;
         if (i + len > s.size()) len = 1;
         out.push_back(s.substr(i, len));
         i += len;
@@ -71,41 +71,36 @@ std::string jsonUnescape(const std::string& input) {
             out += input[i];
             continue;
         }
-        const char escaped = input[++i];
-        if (escaped == '"' || escaped == '\\' || escaped == '/') {
-            out += escaped;
-        } else if (escaped == 'u' && i + 4 < input.size()) {
-            unsigned codepoint = 0;
+        char e = input[++i];
+        if (e == '"' || e == '\\' || e == '/') {
+            out += e;
+        } else if (e == 'u' && i + 4 < input.size()) {
+            unsigned cp = 0;
             bool valid = true;
             for (size_t j = 1; j <= 4; ++j) {
-                const char hex = input[i + j];
-                codepoint <<= 4;
-                if (hex >= '0' && hex <= '9') {
-                    codepoint += hex - '0';
-                } else if (hex >= 'a' && hex <= 'f') {
-                    codepoint += hex - 'a' + 10;
-                } else if (hex >= 'A' && hex <= 'F') {
-                    codepoint += hex - 'A' + 10;
-                } else {
-                    valid = false;
-                }
+                char h = input[i + j];
+                cp <<= 4;
+                if (h >= '0' && h <= '9') cp += h - '0';
+                else if (h >= 'a' && h <= 'f') cp += h - 'a' + 10;
+                else if (h >= 'A' && h <= 'F') cp += h - 'A' + 10;
+                else valid = false;
             }
             if (valid) {
-                if (codepoint <= 0x7f) {
-                    out += static_cast<char>(codepoint);
-                } else if (codepoint <= 0x7ff) {
-                    out += static_cast<char>(0xc0 | (codepoint >> 6));
-                    out += static_cast<char>(0x80 | (codepoint & 0x3f));
+                if (cp <= 0x7f) {
+                    out += static_cast<char>(cp);
+                } else if (cp <= 0x7ff) {
+                    out += static_cast<char>(0xc0 | (cp >> 6));
+                    out += static_cast<char>(0x80 | (cp & 0x3f));
                 } else {
-                    out += static_cast<char>(0xe0 | (codepoint >> 12));
-                    out += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f));
-                    out += static_cast<char>(0x80 | (codepoint & 0x3f));
+                    out += static_cast<char>(0xe0 | (cp >> 12));
+                    out += static_cast<char>(0x80 | ((cp >> 6) & 0x3f));
+                    out += static_cast<char>(0x80 | (cp & 0x3f));
                 }
                 i += 4;
             }
-        } else if (escaped == 'n') {
+        } else if (e == 'n') {
             out += '\n';
-        } else if (escaped == 't') {
+        } else if (e == 't') {
             out += '\t';
         }
     }
@@ -113,32 +108,6 @@ std::string jsonUnescape(const std::string& input) {
 }
 
 size_t charLenHelper(const std::string& s) { return utf8CharsHelper(s).size(); }
-
-// Kokoro's tokens.txt stores a literal space token as "  16". Parsing with
-// operator>> drops that token. Split at the last whitespace delimiter instead,
-// preserving everything before it as the token text.
-std::unordered_map<std::string, int64_t> readKokoroTokenMap(const std::string& path) {
-    std::ifstream input(path);
-    if (!input) {
-        throw std::runtime_error("Failed to open Kokoro tokens file: " + path);
-    }
-
-    std::unordered_map<std::string, int64_t> token_to_id;
-    std::string line;
-    while (std::getline(input, line)) {
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        const size_t delimiter = line.find_last_of(" \t");
-        if (delimiter == std::string::npos || delimiter + 1 >= line.size()) {
-            throw std::runtime_error("Invalid Kokoro token entry: " + line);
-        }
-        const std::string token = line.substr(0, delimiter);
-        const int64_t id = std::stoll(line.substr(delimiter + 1));
-        token_to_id[token] = id;
-    }
-    return token_to_id;
-}
 
 // --- Arabic digit -> Chinese numeral (cn2an an2cn, pragmatic subset) ---
 const char* const CN_DIGITS[] = {"零", "一", "二", "三", "四", "五", "六", "七", "八", "九"};
@@ -166,11 +135,9 @@ std::string intToChinese(const std::string& s) {
     for (int g = ngroups - 1; g >= 0; --g) {
         int start = len - (g + 1) * 4;
         int cnt = 4;
-        if (start < 0) {
-            cnt += start;
-            start = 0;
-        }
+        if (start < 0) { cnt += start; start = 0; }
         std::string grp = d.substr(start, cnt);
+        int group_value = std::stoi(grp);
         // read this 4-digit group
         std::string gout;
         int glen = static_cast<int>(grp.size());
@@ -190,7 +157,9 @@ std::string intToChinese(const std::string& s) {
             }
         }
         if (any) {
-            if (prev_zero && !out.empty()) out += CN_DIGITS[0];
+            if (!out.empty() && (prev_zero || group_value < 1000)) {
+                out += CN_DIGITS[0];
+            }
             out += gout + CN_BIG[g];
             prev_zero = false;
         } else {
@@ -213,7 +182,6 @@ std::string digitsToChinese(const std::string& s) {
     std::string out;
     for (char c : s) {
         if (c >= '0' && c <= '9') {
-            if (!out.empty()) out += " ";
             out += CN_DIGITS[c - '0'];
         }
     }
@@ -231,38 +199,26 @@ std::string normalizeArabicNumbers(const std::string& text) {
     while (i < chars.size()) {
         const std::string& ch = chars[i];
         bool is_digit = (ch.size() == 1 && ch[0] >= '0' && ch[0] <= '9');
-        if (!is_digit) {
-            out += ch;
-            i++;
-            continue;
-        }
+        if (!is_digit) { out += ch; i++; continue; }
         // collect digit run (allow one '.')
         std::string num;
         bool has_dot = false;
         size_t j = i;
         while (j < chars.size()) {
             const std::string& d = chars[j];
-            if (d.size() == 1 && d[0] >= '0' && d[0] <= '9') {
-                num += d;
-                j++;
-                continue;
-            }
-            if (d == "." && !has_dot && j + 1 < chars.size() && chars[j + 1].size() == 1 && chars[j + 1][0] >= '0' &&
-                chars[j + 1][0] <= '9') {
-                has_dot = true;
-                num += ".";
-                j++;
-                continue;
+            if (d.size() == 1 && d[0] >= '0' && d[0] <= '9') { num += d; j++; continue; }
+            if (d == "." && !has_dot && j + 1 < chars.size() &&
+                chars[j+1].size() == 1 && chars[j+1][0] >= '0' && chars[j+1][0] <= '9') {
+                has_dot = true; num += "."; j++; continue;
             }
             break;
         }
-        bool prev_di = (!out.empty() && (out.size() >= std::string("第").size()) &&
-            out.compare(out.size() - std::string("第").size(), std::string("第").size(), "第") == 0);
         bool next_nian = (j < chars.size() && chars[j] == "年");
         if (has_dot) {
             size_t dot = num.find('.');
-            out += intToChinese(num.substr(0, dot)) + "点" + digitsToChinese(num.substr(dot + 1));
-        } else if (next_nian || (prev_di && num.size() >= 2)) {
+            out += intToChinese(num.substr(0, dot)) + "点" +
+                    digitsToChinese(num.substr(dot + 1));
+        } else if (next_nian) {
             out += digitsToChinese(num);
         } else {
             out += intToChinese(num);
@@ -270,6 +226,42 @@ std::string normalizeArabicNumbers(const std::string& text) {
         i = j;
     }
     return out;
+}
+
+std::string normalizeSemanticForms(std::string text) {
+    // Thousands separators.
+    text = std::regex_replace(text, std::regex("([0-9]),(?=[0-9]{3}(?:\\D|$))"), "$1");
+    // Fractions and percentages must be rewritten before the generic number FST.
+    text = std::regex_replace(
+        text, std::regex("([0-9]+)[/]([0-9]+)"), "$2分之$1");
+    text = std::regex_replace(
+        text, std::regex("([0-9]+(?:\\.[0-9]+)?)%"), "百分之$1");
+    // Clock time.
+    text = std::regex_replace(
+        text, std::regex("([0-9]{1,2}):([0-9]{2})"), "$1点$2分");
+    // Currency.
+    text = std::regex_replace(
+        text, std::regex("\\$([0-9]+(?:\\.[0-9]+)?)"), "$1美元");
+    text = std::regex_replace(
+        text, std::regex("(?:¥|￥)([0-9]+(?:\\.[0-9]+)?)"), "$1元");
+    // Temperature and common metric units.
+    text = std::regex_replace(
+        text, std::regex("([0-9]+(?:\\.[0-9]+)?)(?:℃|°C)"), "$1摄氏度");
+    text = std::regex_replace(
+        text, std::regex("([0-9]+(?:\\.[0-9]+)?)(?:℉|°F)"), "$1华氏度");
+    static const std::vector<std::pair<std::string, std::string>> kUnits = {
+        {"kg", "千克"}, {"km", "千米"}, {"cm", "厘米"}, {"mm", "毫米"},
+        {"ml", "毫升"}, {"ms", "毫秒"}, {"GB", "吉字节"}, {"MB", "兆字节"}
+    };
+    for (const auto& unit : kUnits) {
+        text = std::regex_replace(
+            text, std::regex("([0-9]+(?:\\.[0-9]+)?)" + unit.first + "\\b"),
+            "$1" + unit.second);
+    }
+    // A leading minus is a sign; hyphens in identifiers such as GPT-4 stay.
+    text = std::regex_replace(
+        text, std::regex("(^|[^A-Za-z0-9])[-]([0-9])"), "$1负$2");
+    return text;
 }
 
 // Expand contracted finals after a real initial to their pypinyin FINALS form:
@@ -291,16 +283,86 @@ std::string expandContractedFinal(const std::string& fin) {
 // Non y/w zero-initial syllables (a, o, e, ai, ei, ao, ou, an, en, ang, eng,
 // er) pass through unchanged.
 std::string normalizeZeroInitialFinal(const std::string& syl) {
-    static const std::unordered_map<std::string, std::string> kMap = {{"yi", "i"}, {"ya", "ia"}, {"ye", "ie"},
-        {"yao", "iao"}, {"you", "iou"}, {"yan", "ian"}, {"yin", "in"}, {"yang", "iang"}, {"ying", "ing"},
-        {"yong", "iong"}, {"yu", "v"}, {"yue", "ve"}, {"yuan", "van"}, {"yun", "vn"}, {"wu", "u"}, {"wa", "ua"},
-        {"wo", "uo"}, {"wai", "uai"}, {"wei", "uei"}, {"wan", "uan"}, {"wen", "uen"}, {"wang", "uang"},
-        {"weng", "ueng"},
+    static const std::unordered_map<std::string, std::string> kMap = {
+        {"yi", "i"}, {"ya", "ia"}, {"ye", "ie"}, {"yao", "iao"}, {"you", "iou"},
+        {"yan", "ian"}, {"yin", "in"}, {"yang", "iang"}, {"ying", "ing"},
+        {"yong", "iong"}, {"yu", "v"}, {"yue", "ve"}, {"yuan", "van"}, {"yun", "vn"},
+        {"wu", "u"}, {"wa", "ua"}, {"wo", "uo"}, {"wai", "uai"}, {"wei", "uei"},
+        {"wan", "uan"}, {"wen", "uen"}, {"wang", "uang"}, {"weng", "ueng"},
         // bare "y"/"w" degenerate cases
-        {"y", "i"}, {"w", "u"}};
+        {"y", "i"}, {"w", "u"}
+    };
     auto it = kMap.find(syl);
     if (it != kMap.end()) return it->second;
     return syl;
+}
+
+bool parsePinyinPronunciation(
+    const std::string& pronunciation,
+    std::vector<std::string>& initials,
+    std::vector<std::string>& finals) {
+    std::istringstream input(pronunciation);
+    std::string syllable;
+    while (input >> syllable) {
+        if (syllable.empty() || syllable.back() < '1' ||
+            syllable.back() > '5') {
+            return false;
+        }
+        const char tone = syllable.back();
+        syllable.pop_back();
+        if (syllable.empty()) return false;
+
+        std::string initial;
+        std::string final;
+        for (const auto& prefix : {"zh", "ch", "sh", "b", "p", "m",
+                "f", "d", "t", "n", "l", "g", "k", "h", "j", "q",
+                "x", "r", "z", "c", "s"}) {
+            const size_t prefix_length = strlen(prefix);
+            if (syllable.size() > prefix_length &&
+                syllable.compare(0, prefix_length, prefix) == 0) {
+                initial = prefix;
+                final = syllable.substr(prefix_length);
+                break;
+            }
+        }
+        if (initial.empty()) {
+            initial = " ";
+            final = normalizeZeroInitialFinal(syllable);
+        }
+        if (initial == "j" || initial == "q" || initial == "x") {
+            if (final == "u")
+                final = "v";
+            else if (final == "un")
+                final = "vn";
+            else if (final == "ue")
+                final = "ve";
+            else if (final == "uan")
+                final = "van";
+            else
+                final = expandContractedFinal(final);
+        } else if (initial != " ") {
+            final = expandContractedFinal(final);
+        }
+        if (final == "i") {
+            if (initial == "z" || initial == "c" || initial == "s")
+                final = "ii";
+            else if (initial == "zh" || initial == "ch" ||
+                    initial == "sh" || initial == "r")
+                final = "iii";
+        }
+        initials.push_back(initial);
+        finals.push_back(final + tone);
+    }
+    return !initials.empty();
+}
+
+std::string alphaIndex(size_t index) {
+    std::string value;
+    do {
+        value.push_back(static_cast<char>('A' + index % 26));
+        index /= 26;
+    } while (index != 0);
+    return value;
 }
 
 }  // namespace
@@ -324,17 +386,14 @@ std::string KokoroZhBackend::getConvFallbackFilter() const {
 ErrorInfo KokoroZhBackend::initializeLanguageSpecific(const TtsConfig& config) {
     (void)config;
     try {
-        const std::string subdir_path = getModelDir() + "/" + getModelSubdir();
+        const std::string subdir_path = getActiveModelDir();
 
         if (fs::exists(subdir_path + "/tokens.txt")) {
-            token_to_id_ = readKokoroTokenMap(subdir_path + "/tokens.txt");
+            token_to_id_ = text::readTokenToIdMap(subdir_path + "/tokens.txt");
         } else if (!loadTokenizerJson(subdir_path + "/tokenizer.json")) {
             throw std::runtime_error(
                 "Neither a valid tokens.txt nor tokenizer.json was found in " +
                 subdir_path);
-        }
-        if (token_to_id_.find(" ") == token_to_id_.end()) {
-            throw std::runtime_error("Kokoro Chinese vocabulary is missing the space token");
         }
         auto sep_it = token_to_id_.find("/");
         separator_id_ = (sep_it != token_to_id_.end()) ? sep_it->second : -1;
@@ -345,32 +404,41 @@ ErrorInfo KokoroZhBackend::initializeLanguageSpecific(const TtsConfig& config) {
                         << " lexicon entries" << std::endl;
         }
 
-        english_phonemizer_.initEnglish();
-        std::string english_lexicon_dir = subdir_path;
-        if (!fs::exists(english_lexicon_dir + "/us_gold.json") ||
-            !fs::exists(english_lexicon_dir + "/us_silver.json")) {
-            const std::string sibling_english_dir = getModelDir() + "/kokoro-v1.0-en";
-            if (fs::exists(sibling_english_dir + "/us_gold.json") &&
-                fs::exists(sibling_english_dir + "/us_silver.json")) {
-                english_lexicon_dir = sibling_english_dir;
-            }
-        }
-        english_phonemizer_.initEnglishLexicon(english_lexicon_dir);
-
         TTSModelDownloader downloader;
         if (!downloader.ensureCppJieba()) {
             throw std::runtime_error("Failed to obtain cppjieba dictionary.");
         }
         initializeJieba(downloader.getCppJiebaPath());
         initializePinyin();
+        english_frontend_.initPinyin();
+        const std::string kokoro_root =
+            fs::path(subdir_path).parent_path().string();
+        const fs::path local_lexicon_dir = subdir_path;
+        const fs::path installed_english_dir =
+            fs::path(kokoro_root) / "kokoro-v1.0-en";
+        const auto has_english_lexicons = [](const fs::path& directory) {
+            return fs::is_regular_file(directory / "us_gold.json") &&
+                fs::is_regular_file(directory / "us_silver.json");
+        };
+        if (has_english_lexicons(local_lexicon_dir)) {
+            english_frontend_.initEnglishLexicon(
+                local_lexicon_dir.string());
+        } else if (has_english_lexicons(installed_english_dir)) {
+            english_frontend_.initEnglishLexicon(
+                installed_english_dir.string());
+        } else {
+            std::cerr << "[KokoroZh] English lexicons unavailable; "
+                            "mixed English will use espeak-ng fallback."
+                        << std::endl;
+        }
         initializeToneSandhi();
 
         zh_map_ = ZH_MAP_DATA;
 
         return ErrorInfo::ok();
     } catch (const std::exception& e) {
-        return ErrorInfo::error(
-            ErrorCode::INTERNAL_ERROR, std::string("Failed to initialize Kokoro Chinese frontend: ") + e.what());
+        return ErrorInfo::error(ErrorCode::INTERNAL_ERROR,
+            std::string("Failed to initialize Kokoro Chinese frontend: ") + e.what());
     }
 }
 
@@ -384,13 +452,13 @@ bool KokoroZhBackend::loadTokenizerJson(const std::string& path) {
     std::unordered_map<std::string, int64_t> parsed;
     size_t cursor = 0;
     while (cursor < json.size()) {
-        const size_t begin = json.find('"', cursor);
+        size_t begin = json.find('"', cursor);
         if (begin == std::string::npos) break;
         std::string raw;
         bool escaped = false;
         size_t end = begin + 1;
         for (; end < json.size(); ++end) {
-            const char c = json[end];
+            char c = json[end];
             if (escaped) {
                 raw += '\\';
                 raw += c;
@@ -404,9 +472,9 @@ bool KokoroZhBackend::loadTokenizerJson(const std::string& path) {
             }
         }
         if (end >= json.size()) return false;
-        const size_t colon = json.find(':', end + 1);
+        size_t colon = json.find(':', end + 1);
         if (colon == std::string::npos) return false;
-        const size_t value = json.find_first_of("0123456789", colon + 1);
+        size_t value = json.find_first_of("0123456789", colon + 1);
         if (value == std::string::npos) return false;
         size_t value_end = value;
         while (value_end < json.size() &&
@@ -428,17 +496,56 @@ void KokoroZhBackend::shutdownLanguageSpecific() {
     jieba_.reset();
     pinyin_.reset();
     lexicon_.clear();
+    custom_zh_lexicon_.clear();
     token_to_id_.clear();
     zh_map_.clear();
 }
 
+ErrorInfo KokoroZhBackend::updateLanguageLexicon(
+    const std::vector<LexiconEntry>& entries) {
+    for (const auto& entry : entries) {
+        if (entry.word.empty() || entry.phoneme.empty()) {
+            return ErrorInfo::error(
+                ErrorCode::INVALID_CONFIG,
+                "Kokoro lexicon word and phoneme must not be empty");
+        }
+        if (entry.locale == "en") {
+            if (!english_frontend_.addEnglishPronunciation(
+                    entry.word, entry.phoneme)) {
+                return ErrorInfo::error(
+                    ErrorCode::INVALID_CONFIG,
+                    "Invalid Kokoro English lexicon entry: " + entry.word);
+            }
+            continue;
+        }
+        if (!entry.locale.empty() && entry.locale != "zh") {
+            return ErrorInfo::error(
+                ErrorCode::UNSUPPORTED_LANGUAGE,
+                "Kokoro Chinese lexicon locale must be zh or en");
+        }
+        std::vector<std::string> initials;
+        std::vector<std::string> finals;
+        if (!parsePinyinPronunciation(
+                entry.phoneme, initials, finals) ||
+            initials.size() != utf8Chars(entry.word).size()) {
+            return ErrorInfo::error(
+                ErrorCode::INVALID_CONFIG,
+                "Invalid Kokoro Chinese pinyin entry: " + entry.word);
+        }
+        custom_zh_lexicon_[entry.word] = entry.phoneme;
+        if (jieba_) jieba_->InsertUserWord(entry.word);
+    }
+    return ErrorInfo::ok();
+}
+
 void KokoroZhBackend::initializeJieba(const std::string& dict_dir) {
-    std::string dict_path = dict_dir + "/jieba.dict.utf8";
-    std::string hmm_path = dict_dir + "/hmm_model.utf8";
-    std::string user_dict = dict_dir + "/user.dict.utf8";
-    std::string idf_path = dict_dir + "/idf.utf8";
+    std::string dict_path  = dict_dir + "/jieba.dict.utf8";
+    std::string hmm_path   = dict_dir + "/hmm_model.utf8";
+    std::string user_dict  = dict_dir + "/user.dict.utf8";
+    std::string idf_path   = dict_dir + "/idf.utf8";
     std::string stop_words = dict_dir + "/stop_words.utf8";
-    jieba_ = std::make_unique<cppjieba::Jieba>(dict_path, hmm_path, user_dict, idf_path, stop_words);
+    jieba_ = std::make_unique<cppjieba::Jieba>(
+        dict_path, hmm_path, user_dict, idf_path, stop_words);
 }
 
 void KokoroZhBackend::initializePinyin() {
@@ -461,7 +568,9 @@ void KokoroZhBackend::initializeToneSandhi() {
         if (cuts.size() < 2) return {word};
         // Sort by length, take first (shortest) as sub0
         std::sort(cuts.begin(), cuts.end(),
-            [](const std::string& a, const std::string& b) { return charLenHelper(a) < charLenHelper(b); });
+                    [](const std::string& a, const std::string& b) {
+                        return charLenHelper(a) < charLenHelper(b);
+                    });
         std::string sub0 = cuts[0];
         size_t pos = word.find(sub0);
         if (pos == 0) {
@@ -478,14 +587,107 @@ void KokoroZhBackend::initializeToneSandhi() {
     });
 }
 
-std::vector<std::string> KokoroZhBackend::utf8Chars(const std::string& s) { return utf8CharsHelper(s); }
+std::vector<std::string> KokoroZhBackend::getChunkingUnits(
+        const std::string& text) {
+    if (!jieba_) {
+        return KokoroBackend::getChunkingUnits(text);
+    }
 
-std::pair<std::vector<std::string>, std::vector<std::string>> KokoroZhBackend::getInitialsFinals(
-    const std::string& word) {
-    auto res = pinyin_->hanziToPinyin(word, Pinyin::ManTone::Style::TONE3, Pinyin::Default, true, false, true);
+    std::vector<std::string> words;
+    jieba_->Cut(text, words, true);
+    if (words.empty()) {
+        return KokoroBackend::getChunkingUnits(text);
+    }
+
+    std::vector<std::string> units;
+    size_t offset = 0;
+    for (const auto& word : words) {
+        if (word.empty()) {
+            continue;
+        }
+        const size_t position = text.find(word, offset);
+        if (position == std::string::npos) {
+            return KokoroBackend::getChunkingUnits(text);
+        }
+        if (position > offset) {
+            const auto gap_units = KokoroBackend::getChunkingUnits(
+                text.substr(offset, position - offset));
+            units.insert(units.end(), gap_units.begin(), gap_units.end());
+        }
+        units.push_back(word);
+        offset = position + word.size();
+    }
+    if (offset < text.size()) {
+        const auto tail_units =
+            KokoroBackend::getChunkingUnits(text.substr(offset));
+        units.insert(units.end(), tail_units.begin(), tail_units.end());
+    }
+    return units;
+}
+
+std::vector<std::string> KokoroZhBackend::utf8Chars(const std::string& s) {
+    return utf8CharsHelper(s);
+}
+
+std::pair<std::vector<std::string>, std::vector<std::string>>
+KokoroZhBackend::getInitialsFinals(const std::string& word) {
+    static const std::unordered_map<std::string, std::vector<std::string>>
+        kPhrasePinyin = {
+            {"开户行", {"kai1", "hu4", "hang2"}},
+            {"发卡行", {"fa4", "ka3", "hang2"}},
+            {"放款行", {"fang4", "kuan3", "hang2"}},
+            {"行号", {"hang2", "hao4"}},
+            {"各地", {"ge4", "di4"}},
+            {"借还款", {"jie4", "huan2", "kuan3"}},
+            {"时间为", {"shi2", "jian1", "wei2"}},
+            {"为准", {"wei2", "zhun3"}},
+            {"色差", {"se4", "cha1"}},
+            {"掺和", {"chan1", "huo5"}},
+            {"好吃", {"hao3", "chi1"}},
+        };
+
+    std::vector<std::string> raw_pinyins;
+    auto custom = lexicon_.find(word);
+    if (custom != lexicon_.end()) {
+        std::istringstream stream(custom->second);
+        for (std::string syllable; stream >> syllable;) {
+            raw_pinyins.push_back(syllable);
+        }
+    } else {
+        auto phrase = kPhrasePinyin.find(word);
+        if (phrase != kPhrasePinyin.end()) {
+            raw_pinyins = phrase->second;
+        } else {
+            auto converted = pinyin_->hanziToPinyin(
+                word, Pinyin::ManTone::Style::TONE3,
+                Pinyin::Default, false, false, true);
+            for (const auto& item : converted) {
+                if (!item.error && !item.pinyin.empty()) {
+                    raw_pinyins.push_back(item.pinyin);
+                }
+            }
+        }
+    }
+
+    // cpp-pinyin may collapse or drop unusual multi-character phrases.
+    // Preserve every Han character by retrying character-by-character.
+    const auto word_chars = utf8Chars(word);
+    if (raw_pinyins.size() != word_chars.size()) {
+        raw_pinyins.clear();
+        for (const auto& character : word_chars) {
+            auto converted = pinyin_->hanziToPinyin(
+                character, Pinyin::ManTone::Style::TONE3,
+                Pinyin::Default, false, false, true);
+            if (!converted.empty() && !converted.front().error &&
+                !converted.front().pinyin.empty()) {
+                raw_pinyins.push_back(converted.front().pinyin);
+            }
+        }
+    }
+
     std::vector<std::string> initials, finals;
-    for (const auto& pr : res) {
-        std::string py = pr.pinyin;  // e.g. "zhong1", "wo3", "you3"
+    for (const auto& raw_pinyin : raw_pinyins) {
+        std::string py = raw_pinyin;  // e.g. "zhong1", "wo3", "you3"
         // Separate trailing tone digit.
         char tone = '\0';
         if (!py.empty() && py.back() >= '0' && py.back() <= '5') {
@@ -495,8 +697,8 @@ std::pair<std::vector<std::string>, std::vector<std::string>> KokoroZhBackend::g
 
         // Real initials only (pypinyin excludes y/w, they map into the final).
         std::string ini, fin;
-        for (const auto& prefix : {"zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q",
-                    "x", "r", "z", "c", "s"}) {
+        for (const auto& prefix : {"zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l",
+                                    "g", "k", "h", "j", "q", "x", "r", "z", "c", "s"}) {
             size_t pl = strlen(prefix);
             if (py.size() > pl && py.compare(0, pl, prefix) == 0) {
                 ini = prefix;
@@ -513,16 +715,11 @@ std::pair<std::vector<std::string>, std::vector<std::string>> KokoroZhBackend::g
         if (ini == "j" || ini == "q" || ini == "x") {
             // After j/q/x, written "u" is phonetic ü (v):
             //   ju/qu/xu -> v, jun -> vn, jue -> ve
-            if (fin == "u")
-                fin = "v";
-            else if (fin == "un")
-                fin = "vn";
-            else if (fin == "ue")
-                fin = "ve";
-            else if (fin == "uan")
-                fin = "van";
-            else
-                fin = expandContractedFinal(fin);
+            if (fin == "u") fin = "v";
+            else if (fin == "un") fin = "vn";
+            else if (fin == "ue") fin = "ve";
+            else if (fin == "uan") fin = "van";
+            else fin = expandContractedFinal(fin);
         } else if (ini != " ") {
             // Expand contracted finals (iu/ui/un) after other real initials.
             fin = expandContractedFinal(fin);
@@ -530,10 +727,8 @@ std::pair<std::vector<std::string>, std::vector<std::string>> KokoroZhBackend::g
 
         // ii/iii special cases (zi/ci/si -> ii, zhi/chi/shi/ri -> iii)
         if (fin == "i") {
-            if (ini == "z" || ini == "c" || ini == "s")
-                fin = "ii";
-            else if (ini == "zh" || ini == "ch" || ini == "sh" || ini == "r")
-                fin = "iii";
+            if (ini == "z" || ini == "c" || ini == "s") fin = "ii";
+            else if (ini == "zh" || ini == "ch" || ini == "sh" || ini == "r") fin = "iii";
         }
 
         initials.push_back(ini);
@@ -542,17 +737,56 @@ std::pair<std::vector<std::string>, std::vector<std::string>> KokoroZhBackend::g
     return {initials, finals};
 }
 
-std::pair<std::vector<std::string>, std::vector<std::string>> KokoroZhBackend::mergeErhua(
-    std::vector<std::string> initials, std::vector<std::string> finals, const std::string& word,
-    const std::string& pos) {
+std::pair<std::vector<std::string>, std::vector<std::string>>
+KokoroZhBackend::mergeErhua(std::vector<std::string> initials,
+                            std::vector<std::string> finals,
+                            const std::string& word,
+                            const std::string& pos) {
     auto ch = utf8Chars(word);
     if (finals.size() != ch.size()) return {initials, finals};
 
-    // For simplicity, skip must_erhua/not_erhua checks (misaki has lists)
-    // Just apply the core rule: trailing "儿" with er2/er5 merges into previous final as XRY
+    static const std::unordered_set<std::string> kMustErhua = {
+        "小院儿", "胡同儿", "范儿", "老汉儿", "撒欢儿", "寻老礼儿",
+        "妥妥儿", "媳妇儿"
+    };
+    static const std::unordered_set<std::string> kNotErhua = {
+        "虐儿", "为儿", "护儿", "瞒儿", "救儿", "替儿", "有儿", "一儿",
+        "我儿", "俺儿", "妻儿", "拐儿", "聋儿", "乞儿", "患儿", "幼儿",
+        "孤儿", "婴儿", "婴幼儿", "连体儿", "脑瘫儿", "流浪儿", "体弱儿",
+        "混血儿", "蜜雪儿", "舫儿", "祖儿", "美儿", "应采儿", "可儿",
+        "侄儿", "孙儿", "侄孙儿", "女儿", "男儿", "红孩儿", "花儿",
+        "虫儿", "马儿", "鸟儿", "猪儿", "猫儿", "狗儿", "少儿"
+    };
+
+    bool not_erhua = kNotErhua.count(word) != 0;
+    if (!not_erhua) {
+        for (const auto& lexical : kNotErhua) {
+            if (word.size() >= lexical.size() &&
+                word.compare(word.size() - lexical.size(), lexical.size(),
+                                lexical) == 0) {
+                not_erhua = true;
+                break;
+            }
+        }
+    }
+
+    if (!finals.empty() && ch.back() == "儿" && finals.back() == "er1") {
+        finals.back() = "er2";
+    }
+    // For lexical 儿 (花儿、鸟儿、女儿, ...), Misaki keeps a standalone
+    // er2 syllable. ToneSandhi's generic suffix rule may have made it er5.
+    if (!finals.empty() && ch.back() == "儿" && not_erhua) {
+        finals.back() = "er2";
+    }
+    if (kMustErhua.count(word) == 0 &&
+        (not_erhua || pos == "a" || pos == "j" || pos == "nr")) {
+        return {initials, finals};
+    }
+
     std::vector<std::string> new_ini, new_fin;
     for (size_t i = 0; i < ch.size(); ++i) {
-        if (i == ch.size() - 1 && ch[i] == "儿" && (finals[i] == "er2" || finals[i] == "er5") && !new_fin.empty()) {
+        if (i == ch.size() - 1 && ch[i] == "儿" &&
+            (finals[i] == "er2" || finals[i] == "er5") && !new_fin.empty()) {
             // Merge: previous final "aoX" -> "aoRX"
             std::string& prev = new_fin.back();
             if (!prev.empty() && prev.back() >= '0' && prev.back() <= '5') {
@@ -582,30 +816,54 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
     // Punctuation normalization (misaki map_punctuation): full-width CJK
     // punctuation -> half-width + trailing space. The half-width symbol and the
     // space are both real tokens in tokens.txt and produce natural prosody
-    // pauses ("," = light pause, "." = sentence stop), unlike the "/" word
+    // pauses (", " = light pause, "." = sentence stop), unlike the "/" word
     // separator which must NOT stand in for punctuation.
-    std::string processed = text;
+    std::string processed = normalizeSemanticForms(text);
+    // Reuse the same date -> phone -> number FST chain as Matcha. The local
+    // fallback below only handles digits that remain after those contextual
+    // rules.
+    processed = text::normalizeText(processed, text::Language::ZH);
     auto rep = [&](const char* from, const char* to) {
         processed = std::regex_replace(processed, std::regex(from), to);
     };
-    rep("、", ", ");
-    rep("，", ", ");
-    rep("。", ". ");
-    rep("．", ". ");
+    rep("、", ", "); rep("，", ", ");
+    rep("。", ". "); rep("．", ". ");
     rep("！", "! ");
     rep("：", ": ");
     rep("；", "; ");
     rep("？", "? ");
-    const size_t first_non_space = processed.find_first_not_of(" \t\r\n");
-    if (first_non_space == std::string::npos) {
-        return {};
-    }
-    const size_t last_non_space = processed.find_last_not_of(" \t\r\n");
-    processed = processed.substr(first_non_space, last_non_space - first_non_space + 1);
+    rep("《", " “"); rep("》", "” ");
+    rep("「", " “"); rep("」", "” ");
+    rep("『", " “"); rep("』", "” ");
+    rep("（", " ("); rep("）", ") ");
 
-    // Arabic digits -> Chinese numerals (cn2an an2cn subset), so jieba +
-    // cpp-pinyin can pronounce them (3 -> 三, 2024年 -> 二零二四年).
+    // Fallback for any numeric run the FST intentionally left untouched.
     processed = normalizeArabicNumbers(processed);
+
+    // Replace custom Chinese entries with ASCII placeholders before Jieba.
+    // This preserves exact multi-character matches even when Jieba would split
+    // the word differently. The placeholder is converted back to the forced
+    // pinyin after POS tagging.
+    std::vector<std::pair<std::string, std::string>> custom_entries(
+        custom_zh_lexicon_.begin(), custom_zh_lexicon_.end());
+    std::sort(custom_entries.begin(), custom_entries.end(),
+        [](const auto& left, const auto& right) {
+            return left.first.size() > right.first.size();
+        });
+    std::unordered_map<std::string, std::string> custom_placeholders;
+    for (size_t i = 0; i < custom_entries.size(); ++i) {
+        const std::string placeholder =
+            "KokoroCustomLexicon" + alphaIndex(i);
+        size_t position = 0;
+        while ((position = processed.find(
+                    custom_entries[i].first, position)) !=
+                std::string::npos) {
+            processed.replace(
+                position, custom_entries[i].first.size(), placeholder);
+            position += placeholder.size();
+        }
+        custom_placeholders[placeholder] = custom_entries[i].second;
+    }
 
     // 1. Jieba POS tagging
     std::vector<std::pair<std::string, std::string>> seg_cut;
@@ -619,94 +877,46 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
     // 3. Process each word
     token_ids.push_back(0);  // BOS
     bool first_word = true;  // reset after punctuation: no "/" right after punc
-    bool last_token_was_space = false;
-    const auto isEnglishWord = [](const std::string& value) {
-        bool has_letter = false;
-        for (const unsigned char ch : value) {
-            if (std::isalpha(ch) != 0) {
-                has_letter = true;
-                continue;
-            }
-            if (ch != '\'' && ch != '-') {
-                return false;
-            }
-        }
-        return has_letter;
-    };
-    for (size_t segment_index = 0; segment_index < seg_ts.size(); ++segment_index) {
-        const std::string& word = seg_ts[segment_index].first;
-        const std::string& pos = seg_ts[segment_index].second;
+    bool previous_numeric_expression = false;
+    for (const auto& [word, pos] : seg_ts) {
         if (word.empty()) continue;
         if (word == " ") {
             // Whitespace token (from map_punctuation) -> emit " " (id 16)
             auto it = token_to_id_.find(" ");
-            if (it != token_to_id_.end() && !last_token_was_space) {
-                token_ids.push_back(it->second);
-            }
-            last_token_was_space = true;
+            if (it != token_to_id_.end()) token_ids.push_back(it->second);
+            previous_numeric_expression = false;
             continue;
         }
         // cppjieba's Tag() sometimes mislabels ordinary Chinese words as "x"
         // (e.g. "我用" -> pos="x"). Only treat a word as non-Chinese here if it
         // has no CJK bytes; otherwise fall through to the normal pinyin pipeline
         // so tones/separators are emitted correctly.
-        bool has_cjk = false;
-        for (unsigned char c : word) {
-            if (c >= 0x80) {
-                has_cjk = true;
-                break;
-            }
+        const auto word_chars = utf8Chars(word);
+        bool has_cjk = std::any_of(
+            word_chars.begin(), word_chars.end(),
+            [](const std::string& ch) { return text::isChineseChar(ch); });
+        const auto custom = custom_placeholders.find(word);
+        if (custom != custom_placeholders.end()) {
+            // Treat the placeholder as a Chinese word so it follows the same
+            // separator path, then emit the caller-provided tones unchanged.
+            has_cjk = true;
         }
         if ((pos == "x" || pos == "eng") && !has_cjk) {
-            // Match Misaki ZHG2P's en_callable contract: pass a complete
-            // contiguous English phrase to the English frontend. This preserves
-            // word pronunciation, function-word context and phrase-level stress.
-            if (isEnglishWord(word)) {
-                std::string english_text = word;
-                size_t english_end = segment_index;
-                while (english_end + 1 < seg_ts.size()) {
-                    const std::string& next_word = seg_ts[english_end + 1].first;
-                    if (next_word == " " || isEnglishWord(next_word)) {
-                        english_text += next_word;
-                        ++english_end;
-                        continue;
-                    }
-                    break;
+            const bool has_ascii_letter = std::any_of(
+                word.begin(), word.end(),
+                [](unsigned char c) { return std::isalpha(c) != 0; });
+            if (has_ascii_letter) {
+                // Reuse the same C++ English frontend as Kokoro v1.0. Token IDs
+                // for the shared IPA alphabet are stable in v1.1-zh.
+                auto english_ids = english_frontend_.englishTextToTokenIds(word);
+                if (english_ids.size() >= 2 &&
+                    english_ids.front() == 0 && english_ids.back() == 0) {
+                    english_ids.erase(english_ids.begin());
+                    english_ids.pop_back();
                 }
-                while (!english_text.empty() && std::isspace(static_cast<unsigned char>(english_text.back())) != 0) {
-                    english_text.pop_back();
-                }
-
-                const std::string english_phonemes = english_phonemizer_.englishTextToPhonemes(english_text);
-                if (!english_phonemes.empty()) {
-                    auto space = token_to_id_.find(" ");
-                    if (token_ids.size() > 1 && !last_token_was_space && space != token_to_id_.end()) {
-                        token_ids.push_back(space->second);
-                    }
-                    for (const auto& ch : utf8Chars(english_phonemes)) {
-                        auto it = token_to_id_.find(ch);
-                        if (it != token_to_id_.end()) {
-                            token_ids.push_back(it->second);
-                            last_token_was_space = ch == " ";
-                        }
-                    }
-                    const size_t next_index = english_end + 1;
-                    if (next_index < seg_ts.size()) {
-                        bool next_has_cjk = false;
-                        for (const unsigned char ch : seg_ts[next_index].first) {
-                            if (ch >= 0x80) {
-                                next_has_cjk = true;
-                                break;
-                            }
-                        }
-                        if (next_has_cjk && !last_token_was_space && space != token_to_id_.end()) {
-                            token_ids.push_back(space->second);
-                            last_token_was_space = true;
-                        }
-                    }
-                }
-                segment_index = english_end;
+                token_ids.insert(token_ids.end(), english_ids.begin(), english_ids.end());
                 first_word = true;
+                previous_numeric_expression = false;
                 continue;
             }
             // Punctuation / other non-Chinese: direct token lookup, char by char.
@@ -715,50 +925,56 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
             // punctuation to match the reference prosody.
             static const std::string kSpacedPunc = ",.!?;:";
             for (const auto& ch : utf8Chars(word)) {
-                if (ch == " ") {
-                    auto sp = token_to_id_.find(" ");
-                    if (sp != token_to_id_.end() && !last_token_was_space) {
-                        token_ids.push_back(sp->second);
-                    }
-                    last_token_was_space = true;
-                    continue;
-                }
                 auto it = token_to_id_.find(ch);
-                if (it != token_to_id_.end()) {
-                    token_ids.push_back(it->second);
-                    last_token_was_space = false;
-                }
+                if (it != token_to_id_.end()) token_ids.push_back(it->second);
                 if (ch.size() == 1 && kSpacedPunc.find(ch) != std::string::npos) {
                     auto sp = token_to_id_.find(" ");
-                    if (sp != token_to_id_.end()) {
-                        token_ids.push_back(sp->second);
-                        last_token_was_space = true;
-                    }
+                    if (sp != token_to_id_.end()) token_ids.push_back(sp->second);
                 }
             }
             // Punctuation ends a run: the next word starts fresh (no leading "/").
             first_word = true;
+            previous_numeric_expression = false;
             continue;
         }
 
+        const auto is_numeric_expression_char = [](const std::string& ch) {
+            static const std::string kChars =
+                "零〇一二三四五六七八九十百千万亿年月日号点时分秒";
+            return kChars.find(ch) != std::string::npos;
+        };
+        const bool current_numeric_expression =
+            !word_chars.empty() &&
+            std::all_of(
+                word_chars.begin(), word_chars.end(),
+                is_numeric_expression_char);
+
         // Insert "/" separator only between consecutive Chinese words.
-        if (!first_word && separator_id_ >= 0) {
+        if (!first_word && separator_id_ >= 0 &&
+            !(previous_numeric_expression && current_numeric_expression)) {
             token_ids.push_back(separator_id_);
         }
         first_word = false;
-        last_token_was_space = false;
+        previous_numeric_expression = current_numeric_expression;
 
-        // Get initials + finals via cpp-pinyin
-        auto [initials, finals] = getInitialsFinals(word);
-
-        // Apply ToneSandhi
-        finals = tone_sandhi_.modifiedTone(word, pos, finals);
-
-        // Merge erhua
-        std::tie(initials, finals) = mergeErhua(initials, finals, word, pos);
+        std::vector<std::string> initials;
+        std::vector<std::string> finals;
+        if (custom != custom_placeholders.end()) {
+            parsePinyinPronunciation(custom->second, initials, finals);
+        } else {
+            std::tie(initials, finals) = getInitialsFinals(word);
+            finals = tone_sandhi_.modifiedTone(word, pos, finals);
+            std::tie(initials, finals) =
+                mergeErhua(initials, finals, word, pos);
+        }
 
         // Convert to bopomofo via ZH_MAP, then to token IDs
         for (size_t i = 0; i < initials.size() && i < finals.size(); ++i) {
+            if (finals[i].empty()) {
+                std::cerr << "[KokoroZh] Empty final in '" << word << "'"
+                            << std::endl;
+                return {};
+            }
             std::string ini_bpmf = zhMap(initials[i]);
             std::string fin_no_tone = finals[i].substr(0, finals[i].size() - 1);
             std::string tone_digit(1, finals[i].back());
@@ -775,26 +991,34 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
             // Emit: initial (if not space), final, [R], tone
             if (ini_bpmf != " ") {
                 auto it = token_to_id_.find(ini_bpmf);
-                if (it != token_to_id_.end()) token_ids.push_back(it->second);
+                if (it == token_to_id_.end()) {
+                    std::cerr << "[KokoroZh] Unknown initial in '" << word
+                                << "': " << initials[i] << std::endl;
+                    return {};
+                }
+                token_ids.push_back(it->second);
             }
             if (!fin_no_tone.empty()) {
                 std::string fin_bpmf = zhMap(fin_no_tone);
                 auto it = token_to_id_.find(fin_bpmf);
-                if (it != token_to_id_.end()) token_ids.push_back(it->second);
+                if (it == token_to_id_.end()) {
+                    std::cerr << "[KokoroZh] Unknown final in '" << word
+                                << "': " << fin_no_tone << std::endl;
+                    return {};
+                }
+                token_ids.push_back(it->second);
             }
             if (!fin_r.empty()) {
                 auto it = token_to_id_.find(fin_r);
-                if (it != token_to_id_.end()) token_ids.push_back(it->second);
+                if (it == token_to_id_.end()) return {};
+                token_ids.push_back(it->second);
             }
             auto it = token_to_id_.find(tone_digit);
-            if (it != token_to_id_.end()) token_ids.push_back(it->second);
+            if (it == token_to_id_.end()) return {};
+            token_ids.push_back(it->second);
         }
     }
 
-    const auto space_it = token_to_id_.find(" ");
-    while (space_it != token_to_id_.end() && token_ids.size() > 1 && token_ids.back() == space_it->second) {
-        token_ids.pop_back();
-    }
     token_ids.push_back(0);  // EOS
     return token_ids.size() <= 2 ? std::vector<int64_t>{} : token_ids;
 }

@@ -13,7 +13,6 @@
 // Engine selection result from parsing "-l" argument
 struct EngineSelection {
     SpacemiT::BackendType backend;
-    std::string voice;  // Only used by Kokoro
 };
 
 // Kokoro known voices: {full_name, short_name}
@@ -88,7 +87,7 @@ std::string resolveVoiceName(const std::string& input) {
         for (const auto& m : matches) {
             std::cerr << "  " << m << "\n";
         }
-        std::cerr << "请使用完整名称，如 -l kokoro:" << matches[0] << "\n";
+        std::cerr << "请使用完整名称，如 --voice " << matches[0] << "\n";
         exit(1);
     }
 
@@ -107,10 +106,11 @@ void printUsage(const char* program) {
         << "  -o <file>      输出文件 (默认: output.wav)\n"
         << "  -s <speed>     语速倍率 (默认: 1.0)\n"
         << "  --provider <provider>           推理后端: auto/cpu/spacemit (默认: auto)\n"
+        << "  --voice <voice>  Kokoro 音色名称或短名 (默认: en=af_heart, zh=zf_001)\n"
         << "  --lexicon <entries>  自定义发音 (格式: word:phoneme[:locale], 多条逗号分隔)\n"
         << "                 locale=zh (默认): phoneme 为带声调拼音, 空格分隔, 如 \"wei4 ni3\"\n"
-        << "                 locale=en (matcha:en 或 matcha:zh-en): phoneme 为英文单词/短语, 走 espeak 生成 IPA\n"
-        << "  --list-voices  列出 Kokoro 可用音色\n"
+        << "                 locale=en (Matcha 或 Kokoro): phoneme 为英文单词/短语, 走 espeak 生成 IPA\n"
+        << "  --list-voices  列出 Kokoro 已知音色名称\n"
         << "  -h             显示帮助\n"
         << "\n"
         << "引擎格式:\n"
@@ -118,6 +118,7 @@ void printUsage(const char* program) {
         << "  matcha:zh      Matcha 中文 (22050Hz)\n"
         << "  matcha:en      Matcha 英文 (22050Hz)\n"
         << "  matcha:zh-en   Matcha 中英混合 (16000Hz)\n"
+        << "  kokoro         Kokoro 英文 (= kokoro:en, 24000Hz)\n"
         << "  kokoro:zh      Kokoro 中文 (24000Hz)\n"
         << "  kokoro:en      Kokoro 英文 (24000Hz)\n"
         << "\n"
@@ -132,6 +133,7 @@ void printUsage(const char* program) {
         << "  " << program << " -p \"今天学Python\" -l matcha:zh-en  # 中英混合\n"
         << "  " << program << " -p \"你好世界\" -l kokoro:zh        # Kokoro 中文\n"
         << "  " << program << " -p \"Hello\" -l kokoro:en          # Kokoro 英文\n"
+        << "  " << program << " -p \"Hello\" -l kokoro:en --voice af_heart\n"
         << "  # 中文热词 (matcha:zh 或 matcha:zh-en): 纠正多音字, phoneme 为带声调拼音\n"
         << "  " << program << " -p \"你好,我是语音合成模型,很高兴为你服务\" -l matcha:zh \\\n"
         << "      --lexicon \"为你:wei4 ni3\"    # 把 '为你' 从 wei2 ni3 纠正为 wei4 ni3\n"
@@ -194,7 +196,9 @@ void printVoiceList() {
         << "  bm_george       George\n"
         << "  bm_lewis        Lewis\n"
         << "\n"
-        << "用法: -l kokoro:<voice>  支持短名 (xiaobei) 和全名 (zf_xiaobei)\n"
+        << "默认模型包保证提供: kokoro:en=af_heart, kokoro:zh=zf_001\n"
+        << "其他音色需要对应文件已安装在模型 voices 目录。\n"
+        << "用法: --voice <voice>  支持短名 (heart) 和全名 (af_heart)\n"
         << std::endl;
 }
 
@@ -286,6 +290,7 @@ int main(int argc, char* argv[]) {
     float speed = 1.0f;
     std::string lexicon_str;
     std::string provider = "auto";
+    std::string voice;
     bool interactive = true;
     int repeat = 1;
 
@@ -308,6 +313,8 @@ int main(int argc, char* argv[]) {
             speed = std::stof(argv[++i]);
         } else if (strcmp(argv[i], "--provider") == 0 && i + 1 < argc) {
             provider = argv[++i];
+        } else if (strcmp(argv[i], "--voice") == 0 && i + 1 < argc) {
+            voice = resolveVoiceName(argv[++i]);
         } else if (strcmp(argv[i], "--lexicon") == 0 && i + 1 < argc) {
             lexicon_str = argv[++i];
         } else if (strcmp(argv[i], "--repeat") == 0 && i + 1 < argc) {
@@ -325,6 +332,15 @@ int main(int argc, char* argv[]) {
     config.backend = selection.backend;
     config.speech_rate = speed;
     config.provider = provider;
+    if (!voice.empty()) {
+        if (selection.backend != SpacemiT::BackendType::KOKORO &&
+            selection.backend != SpacemiT::BackendType::KOKORO_EN &&
+            selection.backend != SpacemiT::BackendType::KOKORO_ZH) {
+            std::cerr << "错误: --voice 仅适用于 Kokoro 后端" << std::endl;
+            return 1;
+        }
+        config.voice = voice;
+    }
 
     // 根据后端设置采样率
     switch (selection.backend) {
@@ -339,6 +355,7 @@ int main(int argc, char* argv[]) {
         case SpacemiT::BackendType::KOKORO_EN:
         case SpacemiT::BackendType::KOKORO_ZH:
             config.sample_rate = 24000;
+            config.num_threads = 4;
             break;
         default:
             config.sample_rate = 22050;

@@ -22,12 +22,11 @@
 #include "tts_service.h"
 
 // =============================================================================
-// 引擎选择 (复用 tts_file_demo 的格式: matcha:zh-en, kokoro:xiaoxiao)
+// 引擎选择 (复用 tts_file_demo 的格式: matcha:zh-en, kokoro:zh)
 // =============================================================================
 
 struct EngineSelection {
     SpacemiT::BackendType backend;
-    std::string voice;  // Only used by Kokoro
 };
 
 // Kokoro known voices: {full_name, short_name}
@@ -99,7 +98,7 @@ std::string resolveVoiceName(const std::string& input) {
         for (const auto& m : matches) {
             std::cerr << "  " << m << "\n";
         }
-        std::cerr << "请使用完整名称，如 -l kokoro:" << matches[0] << "\n";
+        std::cerr << "请使用完整名称，如 --voice " << matches[0] << "\n";
         exit(1);
     }
 
@@ -131,8 +130,15 @@ EngineSelection parseEngine(const std::string& spec) {
     }
 
     if (engine == "kokoro") {
-        sel.backend = SpacemiT::BackendType::KOKORO;
-        sel.voice = resolveVoiceName(variant);
+        if (variant.empty() || variant == "en") {
+            sel.backend = SpacemiT::BackendType::KOKORO_EN;
+        } else if (variant == "zh") {
+            sel.backend = SpacemiT::BackendType::KOKORO_ZH;
+        } else {
+            std::cerr << "错误: 未知 Kokoro 变体 '" << variant << "'\n"
+                << "可用变体: en, zh\n";
+            exit(1);
+        }
         return sel;
     }
 
@@ -145,7 +151,7 @@ EngineSelection parseEngine(const std::string& spec) {
 
     std::cerr << "错误: 未知引擎 '" << engine << "'\n"
         << "可用引擎: matcha, kokoro\n"
-        << "用法: -l matcha:zh 或 -l kokoro:zf_xiaobei\n";
+        << "用法: -e matcha:zh 或 -e kokoro:zh\n";
     exit(1);
 }
 
@@ -199,7 +205,9 @@ void printVoiceList() {
         << "  bm_george       George\n"
         << "  bm_lewis        Lewis\n"
         << "\n"
-        << "用法: -l kokoro:<voice>  支持短名 (xiaobei) 和全名 (zf_xiaobei)\n"
+        << "默认模型包保证提供: kokoro:en=af_heart, kokoro:zh=zf_001\n"
+        << "其他音色需要对应文件已安装在模型 voices 目录。\n"
+        << "用法: --voice <voice>  支持短名 (heart) 和全名 (af_heart)\n"
         << std::endl;
 }
 
@@ -537,7 +545,8 @@ void printUsage(const char* program) {
         << "  -p <text>         自定义文本\n"
         << "  -e <engine>       引擎选择 (格式: 引擎:变体)\n"
         << "                    matcha:zh / matcha:en / matcha:zh-en (默认)\n"
-        << "                    kokoro / kokoro:<voice>\n"
+        << "                    kokoro (= kokoro:en) / kokoro:en / kokoro:zh\n"
+        << "  --voice <voice>   Kokoro 音色名称或短名 (默认: en=af_heart, zh=zf_001)\n"
         << "  -o <device>       输出设备索引 (-1 为默认)\n"
         << "  -l, --list        列出可用音频输出设备\n"
         << "  --provider <provider>           推理后端: auto/cpu/spacemit (默认: auto)\n"
@@ -545,13 +554,13 @@ void printUsage(const char* program) {
         << "  --channels <N>    输出声道数: 1=单声道, 2=双声道 (默认: 1)\n"
         << "  --no-play         不播放音频\n"
         << "  --delay <ms>      模拟 LLM 输出延迟 (默认: 5 ms/字符)\n"
-        << "  --list-voices     列出 Kokoro 可用音色\n"
+        << "  --list-voices     列出 Kokoro 已知音色名称\n"
         << "  -h                显示帮助\n"
         << "\n"
         << "示例:\n"
         << "  " << program << " -l                              # 列出输出设备\n"
         << "  " << program << " -p \"你好\" -e matcha:zh           # 中文合成\n"
-        << "  " << program << " -p \"你好\" -e kokoro:xiaoxiao     # Kokoro 音色\n"
+        << "  " << program << " -p \"你好\" -e kokoro:zh --voice zf_001\n"
         << "  " << program << " -o 0 -p \"你好\"                   # 指定输出设备 0\n"
         << std::endl;
 }
@@ -592,6 +601,7 @@ int main(int argc, char* argv[]) {
     int channels = 1;  // 输出声道数
     int output_device = -1;  // 输出设备索引
     std::string provider = "auto";
+    std::string voice;
 
     // 解析参数
     for (int i = 1; i < argc; i++) {
@@ -612,6 +622,8 @@ int main(int argc, char* argv[]) {
             output_device = std::stoi(argv[++i]);
         } else if (strcmp(argv[i], "--provider") == 0 && i + 1 < argc) {
             provider = argv[++i];
+        } else if (strcmp(argv[i], "--voice") == 0 && i + 1 < argc) {
+            voice = resolveVoiceName(argv[++i]);
         } else if (strcmp(argv[i], "--no-play") == 0) {
             enable_play = false;
         } else if (strcmp(argv[i], "--delay") == 0 && i + 1 < argc) {
@@ -639,6 +651,8 @@ int main(int argc, char* argv[]) {
             sample_rate = 16000;
             break;
         case SpacemiT::BackendType::KOKORO:
+        case SpacemiT::BackendType::KOKORO_EN:
+        case SpacemiT::BackendType::KOKORO_ZH:
             sample_rate = 24000;
             break;
         default:
@@ -665,9 +679,20 @@ int main(int argc, char* argv[]) {
     config.backend = selection.backend;
     config.sample_rate = sample_rate;
     config.provider = provider;
+    if (selection.backend == SpacemiT::BackendType::KOKORO ||
+        selection.backend == SpacemiT::BackendType::KOKORO_EN ||
+        selection.backend == SpacemiT::BackendType::KOKORO_ZH) {
+        config.num_threads = 4;
+    }
 
-    if (selection.backend == SpacemiT::BackendType::KOKORO && !selection.voice.empty()) {
-        config.voice = selection.voice;
+    if (!voice.empty()) {
+        if (selection.backend != SpacemiT::BackendType::KOKORO &&
+            selection.backend != SpacemiT::BackendType::KOKORO_EN &&
+            selection.backend != SpacemiT::BackendType::KOKORO_ZH) {
+            std::cerr << "错误: --voice 仅适用于 Kokoro 后端" << std::endl;
+            return 1;
+        }
+        config.voice = voice;
     }
 
     SpacemiT::TtsEngine engine(config);
