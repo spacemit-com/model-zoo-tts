@@ -877,16 +877,50 @@ ErrorInfo KokoroBackend::synthesize(const std::string& text, SynthesisResult& re
                     ? BoundaryKind::kNone : sentences.back().boundary;
                 pushHardLimitedTokens(token_ids, boundary);
             } else {
+                std::string pending_sentence_text;
+                std::vector<int64_t> pending_sentence_tokens;
+                BoundaryKind pending_sentence_boundary = BoundaryKind::kNone;
+                const auto flushPendingSentence = [&]() {
+                    if (effectiveTokenCount(pending_sentence_tokens) > 0) {
+                        pushHardLimitedTokens(
+                            pending_sentence_tokens,
+                            pending_sentence_boundary);
+                    }
+                    pending_sentence_text.clear();
+                    pending_sentence_tokens.clear();
+                    pending_sentence_boundary = BoundaryKind::kNone;
+                };
                 for (const auto& sentence : sentences) {
                     std::vector<int64_t> sentence_tokens =
                         textToTokenIds(sentence.text);
                     if (effectiveTokenCount(sentence_tokens) <=
                         runtime_max_effective_tokens) {
-                        pushHardLimitedTokens(
-                            sentence_tokens, sentence.boundary);
+                        if (using_spacemit_ep_) {
+                            pushHardLimitedTokens(
+                                sentence_tokens, sentence.boundary);
+                            continue;
+                        }
+                        const std::string candidate =
+                            pending_sentence_text + sentence.text;
+                        std::vector<int64_t> candidate_tokens =
+                            textToTokenIds(candidate);
+                        if (!pending_sentence_text.empty() &&
+                            effectiveTokenCount(candidate_tokens) >
+                                runtime_max_effective_tokens) {
+                            flushPendingSentence();
+                            pending_sentence_text = sentence.text;
+                            pending_sentence_tokens =
+                                std::move(sentence_tokens);
+                        } else {
+                            pending_sentence_text = candidate;
+                            pending_sentence_tokens =
+                                std::move(candidate_tokens);
+                        }
+                        pending_sentence_boundary = sentence.boundary;
                         continue;
                     }
 
+                    flushPendingSentence();
                     std::string pending_text;
                     std::vector<int64_t> pending_tokens;
                     BoundaryKind pending_boundary = BoundaryKind::kNone;
@@ -929,6 +963,7 @@ ErrorInfo KokoroBackend::synthesize(const std::string& text, SynthesisResult& re
                             pending_tokens, pending_boundary);
                     }
                 }
+                flushPendingSentence();
             }
         }
 
