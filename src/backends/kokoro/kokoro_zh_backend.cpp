@@ -229,38 +229,47 @@ std::string normalizeArabicNumbers(const std::string& text) {
 }
 
 std::string normalizeSemanticForms(std::string text) {
-    // Thousands separators.
-    text = std::regex_replace(text, std::regex("([0-9]),(?=[0-9]{3}(?:\\D|$))"), "$1");
-    // Fractions and percentages must be rewritten before the generic number FST.
-    text = std::regex_replace(
-        text, std::regex("([0-9]+)[/]([0-9]+)"), "$2分之$1");
-    text = std::regex_replace(
-        text, std::regex("([0-9]+(?:\\.[0-9]+)?)%"), "百分之$1");
-    // Clock time.
-    text = std::regex_replace(
-        text, std::regex("([0-9]{1,2}):([0-9]{2})"), "$1点$2分");
-    // Currency.
-    text = std::regex_replace(
-        text, std::regex("\\$([0-9]+(?:\\.[0-9]+)?)"), "$1美元");
-    text = std::regex_replace(
-        text, std::regex("(?:¥|￥)([0-9]+(?:\\.[0-9]+)?)"), "$1元");
-    // Temperature and common metric units.
-    text = std::regex_replace(
-        text, std::regex("([0-9]+(?:\\.[0-9]+)?)(?:℃|°C)"), "$1摄氏度");
-    text = std::regex_replace(
-        text, std::regex("([0-9]+(?:\\.[0-9]+)?)(?:℉|°F)"), "$1华氏度");
-    static const std::vector<std::pair<std::string, std::string>> kUnits = {
-        {"kg", "千克"}, {"km", "千米"}, {"cm", "厘米"}, {"mm", "毫米"},
-        {"ml", "毫升"}, {"ms", "毫秒"}, {"GB", "吉字节"}, {"MB", "兆字节"}
+    static const std::regex kThousands("([0-9]),(?=[0-9]{3}(?:\\D|$))");
+    static const std::regex kFraction("([0-9]+)[/]([0-9]+)");
+    static const std::regex kPercentage("([0-9]+(?:\\.[0-9]+)?)%");
+    static const std::regex kClockTime("([0-9]{1,2}):([0-9]{2})");
+    static const std::regex kDollar("\\$([0-9]+(?:\\.[0-9]+)?)");
+    static const std::regex kYuan("(?:¥|￥)([0-9]+(?:\\.[0-9]+)?)");
+    static const std::regex kCelsius(
+        "([0-9]+(?:\\.[0-9]+)?)(?:℃|°C)");
+    static const std::regex kFahrenheit(
+        "([0-9]+(?:\\.[0-9]+)?)(?:℉|°F)");
+    static const std::vector<std::pair<std::regex, std::string>> kUnits = {
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)kg\\b"), "$1千克"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)km\\b"), "$1千米"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)cm\\b"), "$1厘米"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)mm\\b"), "$1毫米"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)ml\\b"), "$1毫升"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)ms\\b"), "$1毫秒"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)GB\\b"), "$1吉字节"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)MB\\b"), "$1兆字节"}
     };
+    static const std::regex kLeadingMinus(
+        "(^|[^A-Za-z0-9])[-]([0-9])");
+
+    // Thousands separators.
+    text = std::regex_replace(text, kThousands, "$1");
+    // Fractions and percentages must be rewritten before the generic number FST.
+    text = std::regex_replace(text, kFraction, "$2分之$1");
+    text = std::regex_replace(text, kPercentage, "百分之$1");
+    // Clock time.
+    text = std::regex_replace(text, kClockTime, "$1点$2分");
+    // Currency.
+    text = std::regex_replace(text, kDollar, "$1美元");
+    text = std::regex_replace(text, kYuan, "$1元");
+    // Temperature and common metric units.
+    text = std::regex_replace(text, kCelsius, "$1摄氏度");
+    text = std::regex_replace(text, kFahrenheit, "$1华氏度");
     for (const auto& unit : kUnits) {
-        text = std::regex_replace(
-            text, std::regex("([0-9]+(?:\\.[0-9]+)?)" + unit.first + "\\b"),
-            "$1" + unit.second);
+        text = std::regex_replace(text, unit.first, unit.second);
     }
     // A leading minus is a sign; hyphens in identifiers such as GPT-4 stay.
-    text = std::regex_replace(
-        text, std::regex("(^|[^A-Za-z0-9])[-]([0-9])"), "$1负$2");
+    text = std::regex_replace(text, kLeadingMinus, "$1负$2");
     return text;
 }
 
