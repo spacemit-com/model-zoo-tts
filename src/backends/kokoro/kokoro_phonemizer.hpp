@@ -37,6 +37,7 @@ struct PinyinParts {
 class KokoroPhonemizer {
 public:
     static constexpr int PAD_TOKEN_ID = 0;
+    static constexpr int SPACE_TOKEN_ID = 16;
     static constexpr int MAX_TOKEN_LENGTH = 512;
 
     KokoroPhonemizer();

@@ -962,14 +962,11 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
                 // English words without the pure-English space token. Apply
                 // the same contract when one custom entry expands to several
                 // respelled words, such as "codexlex" -> "space meet".
-                const auto space = token_to_id_.find(" ");
-                if (space != token_to_id_.end()) {
-                    english_ids.erase(
-                        std::remove(
-                            english_ids.begin(), english_ids.end(),
-                            space->second),
-                        english_ids.end());
-                }
+                english_ids.erase(
+                    std::remove(
+                        english_ids.begin(), english_ids.end(),
+                        KokoroPhonemizer::SPACE_TOKEN_ID),
+                    english_ids.end());
                 token_ids.insert(token_ids.end(), english_ids.begin(), english_ids.end());
                 first_word = true;
                 previous_numeric_expression = false;
