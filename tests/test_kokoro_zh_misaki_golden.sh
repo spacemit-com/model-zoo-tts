@@ -10,6 +10,9 @@ DEMO="${1:-${ROOT_DIR}/build/bin/tts_file_demo}"
 GOLDEN="${ROOT_DIR}/tests/kokoro_zh_misaki_golden.tsv"
 MODEL_DIR="${KOKORO_ZH_MODEL_DIR:-${HOME}/.cache/models/tts/kokoro-tts/kokoro-v1.1-zh}"
 TOKENS="${MODEL_DIR}/tokens.txt"
+if [[ ! -f "${TOKENS}" ]]; then
+    TOKENS="${MODEL_DIR}/tokenizer.json"
+fi
 
 if [[ ! -x "${DEMO}" ]]; then
     echo "Missing tts_file_demo: ${DEMO}" >&2
@@ -42,14 +45,19 @@ while IFS=$'\t' read -r text expected; do
     actual="$(
         python3 - "${TOKENS}" "${ids_file}" <<'PY'
 import pathlib
+import json
 import sys
 
 token_path = pathlib.Path(sys.argv[1])
 ids_path = pathlib.Path(sys.argv[2])
-id_to_token = {}
-for line in token_path.read_text(encoding="utf-8").splitlines():
-    token, token_id = line.rsplit(" ", 1)
-    id_to_token[int(token_id)] = token
+if token_path.suffix == ".json":
+    token_to_id = json.loads(token_path.read_text(encoding="utf-8"))
+    id_to_token = {int(token_id): token for token, token_id in token_to_id.items()}
+else:
+    id_to_token = {}
+    for line in token_path.read_text(encoding="utf-8").splitlines():
+        token, token_id = line.rsplit(" ", 1)
+        id_to_token[int(token_id)] = token
 ids = [int(value) for value in ids_path.read_text().split()]
 print("".join(id_to_token[token_id] for token_id in ids[1:-1]), end="")
 PY

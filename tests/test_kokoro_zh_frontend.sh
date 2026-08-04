@@ -41,8 +41,8 @@ SPACEMIT_TTS_WARMUP_RUNS=0 \
   <"${work_dir}/input.txt" >"${work_dir}/run.log" 2>&1
 
 if ! diff -u "${work_dir}/expected.txt" "${work_dir}/actual.txt"; then
-  echo "Kokoro Chinese frontend differs from the official Misaki golden set." >&2
+  echo "Kokoro Chinese frontend differs from its Misaki/model golden set." >&2
   exit 1
 fi
 
-echo "Kokoro Chinese frontend: 20/20 official Misaki cases matched."
+echo "Kokoro Chinese frontend: 20/20 Misaki/model cases matched."

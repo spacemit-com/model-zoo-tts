@@ -1,4 +1,5 @@
-# Official Misaki 1.1 ZHFrontend phoneme output.
-二零二六年七月二十八日，研发团队正在验证	ㄦ4ㄌ应2ㄦ4/ㄌ又4ㄋ言2/ㄑㄧ1月4/ㄦ4ㄕ十2ㄅㄚ1ㄖ十4, 言2ㄈㄚ1/ㄊ万2ㄉ为4/ㄓㄥ4ㄗㄞ4/言4ㄓㄥ4
+# Misaki 1.1 ZHFrontend output with the K3 numeric-expression exception:
+# date components omit "/" because the quantized model renders it as a pause.
+二零二六年七月二十八日，研发团队正在验证	ㄦ4ㄌ应2ㄦ4ㄌ又4ㄋ言2ㄑㄧ1月4ㄦ4ㄕ十2ㄅㄚ1ㄖ十4, 言2ㄈㄚ1/ㄊ万2ㄉ为4/ㄓㄥ4ㄗㄞ4/言4ㄓㄥ4
 包括数字、英文缩写、标点停顿	ㄅㄠ1ㄎ我4/ㄕㄨ4ㄗㄭ4, 应1文2/ㄙ我1ㄒㄝ3, ㄅ要1ㄉ言3/ㄊ应2ㄉ文4
 确保从开始到结束都保持清晰、自然、连贯。	ㄑ月4ㄅㄠ3/ㄘ中2/ㄎㄞ1ㄕ十3/ㄉㄠ4/ㄐㄝ2ㄕㄨ4/ㄉㄡ1/ㄅㄠ3ㄔ十2/ㄑ应1ㄒㄧ1, ㄗㄭ4ㄖㄢ2, ㄌ言2ㄍ万4.

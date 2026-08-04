@@ -795,7 +795,6 @@ KokoroZhBackend::mergeErhua(std::vector<std::string> initials,
         "侄儿", "孙儿", "侄孙儿", "女儿", "男儿", "红孩儿", "花儿",
         "虫儿", "马儿", "鸟儿", "猪儿", "猫儿", "狗儿", "少儿"
     };
-
     bool not_erhua = kNotErhua.count(word) != 0;
     if (!not_erhua) {
         for (const auto& lexical : kNotErhua) {
@@ -927,7 +926,10 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
         if (word == " ") {
             // Whitespace token (from map_punctuation) -> emit " " (id 16)
             auto it = token_to_id_.find(" ");
-            if (it != token_to_id_.end()) token_ids.push_back(it->second);
+            if (it != token_to_id_.end() &&
+                (token_ids.empty() || token_ids.back() != it->second)) {
+                token_ids.push_back(it->second);
+            }
             previous_numeric_expression = false;
             continue;
         }
@@ -958,15 +960,6 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
                     english_ids.erase(english_ids.begin());
                     english_ids.pop_back();
                 }
-                // The mixed frontend concatenates independently segmented
-                // English words without the pure-English space token. Apply
-                // the same contract when one custom entry expands to several
-                // respelled words, such as "codexlex" -> "space meet".
-                english_ids.erase(
-                    std::remove(
-                        english_ids.begin(), english_ids.end(),
-                        KokoroPhonemizer::SPACE_TOKEN_ID),
-                    english_ids.end());
                 token_ids.insert(token_ids.end(), english_ids.begin(), english_ids.end());
                 first_word = true;
                 previous_numeric_expression = false;
@@ -1080,6 +1073,11 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
         }
     }
 
+    const auto space = token_to_id_.find(" ");
+    while (space != token_to_id_.end() && token_ids.size() > 1 &&
+            token_ids.back() == space->second) {
+        token_ids.pop_back();
+    }
     token_ids.push_back(0);  // EOS
     return token_ids.size() <= 2 ? std::vector<int64_t>{} : token_ids;
 }
