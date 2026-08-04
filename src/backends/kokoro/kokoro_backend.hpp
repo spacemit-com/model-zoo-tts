@@ -83,6 +83,10 @@ protected:
     virtual std::vector<std::string> getChunkingUnits(
         const std::string& text);
 
+    /// @brief Rewrite language-specific semantic forms before chunking.
+    /// The frontend still performs its normal processing on every chunk.
+    virtual std::string prepareTextForChunking(const std::string& text) const;
+
     /// @brief Model subdirectory name (e.g. "kokoro-v1.0-en").
     virtual std::string getModelSubdir() const = 0;
 

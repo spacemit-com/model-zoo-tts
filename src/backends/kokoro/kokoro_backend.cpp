@@ -126,13 +126,32 @@ BoundaryKind getBoundaryKind(const std::string& unit) {
     return BoundaryKind::kNone;
 }
 
+bool isNumericSeparator(
+        const std::vector<std::string>& units, size_t index) {
+    if (index == 0 || index + 1 >= units.size()) {
+        return false;
+    }
+    const std::string& separator = units[index];
+    if (separator != "." && separator != "," && separator != ":") {
+        return false;
+    }
+    const std::string& previous = units[index - 1];
+    const std::string& next = units[index + 1];
+    return !previous.empty() && !next.empty() &&
+        std::isdigit(static_cast<unsigned char>(previous.back())) != 0 &&
+        std::isdigit(static_cast<unsigned char>(next.front())) != 0;
+}
+
 std::vector<TextSpan> splitTextSpans(
     const std::string& text, BoundaryKind minimum_boundary) {
     std::vector<TextSpan> spans;
     std::string pending;
-    for (const auto& unit : splitTextUnits(text)) {
+    const std::vector<std::string> units = splitTextUnits(text);
+    for (size_t index = 0; index < units.size(); ++index) {
+        const std::string& unit = units[index];
         pending += unit;
-        const BoundaryKind boundary = getBoundaryKind(unit);
+        const BoundaryKind boundary = isNumericSeparator(units, index)
+            ? BoundaryKind::kNone : getBoundaryKind(unit);
         if (static_cast<int>(boundary) >=
             static_cast<int>(minimum_boundary)) {
             spans.push_back({std::move(pending), boundary});
@@ -372,6 +391,11 @@ KokoroBackend::~KokoroBackend() {
 std::vector<std::string> KokoroBackend::getChunkingUnits(
         const std::string& text) {
     return splitTextUnits(text);
+}
+
+std::string KokoroBackend::prepareTextForChunking(
+        const std::string& text) const {
+    return text;
 }
 
 // =============================================================================
@@ -845,8 +869,9 @@ ErrorInfo KokoroBackend::synthesize(const std::string& text, SynthesisResult& re
         if (injected_tokens) {
             pushHardLimitedTokens(token_ids, BoundaryKind::kNone);
         } else {
+            const std::string chunking_text = prepareTextForChunking(text);
             const std::vector<TextSpan> sentences =
-                splitTextSpans(text, BoundaryKind::kSentence);
+                splitTextSpans(chunking_text, BoundaryKind::kSentence);
             if (effective_count <= runtime_max_effective_tokens) {
                 const BoundaryKind boundary = sentences.empty()
                     ? BoundaryKind::kNone : sentences.back().boundary;

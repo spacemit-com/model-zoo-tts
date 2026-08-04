@@ -593,34 +593,63 @@ std::vector<std::string> KokoroZhBackend::getChunkingUnits(
         return KokoroBackend::getChunkingUnits(text);
     }
 
-    std::vector<std::string> words;
-    jieba_->Cut(text, words, true);
-    if (words.empty()) {
-        return KokoroBackend::getChunkingUnits(text);
-    }
-
     std::vector<std::string> units;
-    size_t offset = 0;
-    for (const auto& word : words) {
-        if (word.empty()) {
-            continue;
+    const auto appendJiebaUnits = [&](const std::string& segment) {
+        if (segment.empty()) {
+            return true;
         }
-        const size_t position = text.find(word, offset);
-        if (position == std::string::npos) {
+        std::vector<std::string> words;
+        jieba_->Cut(segment, words, true);
+        if (words.empty()) {
+            const auto fallback = KokoroBackend::getChunkingUnits(segment);
+            units.insert(units.end(), fallback.begin(), fallback.end());
+            return true;
+        }
+
+        size_t offset = 0;
+        for (const auto& word : words) {
+            if (word.empty()) {
+                continue;
+            }
+            const size_t position = segment.find(word, offset);
+            if (position == std::string::npos) {
+                return false;
+            }
+            if (position > offset) {
+                const auto gap = KokoroBackend::getChunkingUnits(
+                    segment.substr(offset, position - offset));
+                units.insert(units.end(), gap.begin(), gap.end());
+            }
+            units.push_back(word);
+            offset = position + word.size();
+        }
+        if (offset < segment.size()) {
+            const auto tail =
+                KokoroBackend::getChunkingUnits(segment.substr(offset));
+            units.insert(units.end(), tail.begin(), tail.end());
+        }
+        return true;
+    };
+
+    // Semantic forms must remain atomic chunking units. Splitting a currency
+    // sign, decimal, fraction, or unit suffix from its number changes how the
+    // per-chunk frontend normalizes and pronounces it.
+    static const std::regex kSemanticChunkAtom(
+        "(?:[0-9]{1,2}点[0-9]{2}分|百分之[0-9]+(?:\\.[0-9]+)?|"
+        "[0-9]+分之[0-9]+|(?:负)?[0-9]+(?:\\.[0-9]+)?(?:美元|元|"
+        "摄氏度|华氏度|千克|千米|厘米|毫米|毫升|毫秒|吉字节|兆字节))");
+    size_t offset = 0;
+    for (std::sregex_iterator it(text.begin(), text.end(), kSemanticChunkAtom),
+            end; it != end; ++it) {
+        const size_t position = static_cast<size_t>(it->position());
+        if (!appendJiebaUnits(text.substr(offset, position - offset))) {
             return KokoroBackend::getChunkingUnits(text);
         }
-        if (position > offset) {
-            const auto gap_units = KokoroBackend::getChunkingUnits(
-                text.substr(offset, position - offset));
-            units.insert(units.end(), gap_units.begin(), gap_units.end());
-        }
-        units.push_back(word);
-        offset = position + word.size();
+        units.push_back(it->str());
+        offset = position + static_cast<size_t>(it->length());
     }
-    if (offset < text.size()) {
-        const auto tail_units =
-            KokoroBackend::getChunkingUnits(text.substr(offset));
-        units.insert(units.end(), tail_units.begin(), tail_units.end());
+    if (!appendJiebaUnits(text.substr(offset))) {
+        return KokoroBackend::getChunkingUnits(text);
     }
     return units;
 }
@@ -1021,6 +1050,11 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
 
     token_ids.push_back(0);  // EOS
     return token_ids.size() <= 2 ? std::vector<int64_t>{} : token_ids;
+}
+
+std::string KokoroZhBackend::prepareTextForChunking(
+        const std::string& text) const {
+    return normalizeSemanticForms(text);
 }
 
 }  // namespace tts
