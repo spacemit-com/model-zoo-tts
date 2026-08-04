@@ -916,7 +916,13 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
     token_ids.push_back(0);  // BOS
     bool first_word = true;  // reset after punctuation: no "/" right after punc
     bool previous_numeric_expression = false;
-    for (const auto& [word, pos] : seg_ts) {
+    const auto isNumericExpressionChar = [](const std::string& ch) {
+        static const std::string kChars =
+            "零〇一二三四五六七八九十百千万亿年月日号点时分秒";
+        return kChars.find(ch) != std::string::npos;
+    };
+    for (size_t seg_index = 0; seg_index < seg_ts.size(); ++seg_index) {
+        const auto& [word, pos] = seg_ts[seg_index];
         if (word.empty()) continue;
         if (word == " ") {
             // Whitespace token (from map_punctuation) -> emit " " (id 16)
@@ -976,16 +982,11 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
             continue;
         }
 
-        const auto is_numeric_expression_char = [](const std::string& ch) {
-            static const std::string kChars =
-                "零〇一二三四五六七八九十百千万亿年月日号点时分秒";
-            return kChars.find(ch) != std::string::npos;
-        };
         const bool current_numeric_expression =
             !word_chars.empty() &&
             std::all_of(
                 word_chars.begin(), word_chars.end(),
-                is_numeric_expression_char);
+                isNumericExpressionChar);
 
         // Insert "/" separator only between consecutive Chinese words.
         if (!first_word && separator_id_ >= 0 &&
@@ -1000,7 +1001,20 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
         if (custom != custom_placeholders.end()) {
             parsePinyinPronunciation(custom->second, initials, finals);
         } else {
-            std::tie(initials, finals) = getInitialsFinals(word);
+            bool weight_context = false;
+            if (word == "重" && seg_index + 1 < seg_ts.size()) {
+                const auto next_chars = utf8Chars(seg_ts[seg_index + 1].first);
+                weight_context = !next_chars.empty() &&
+                    std::all_of(
+                        next_chars.begin(), next_chars.end(),
+                        isNumericExpressionChar);
+            }
+            if (weight_context) {
+                initials = {"zh"};
+                finals = {"ong4"};
+            } else {
+                std::tie(initials, finals) = getInitialsFinals(word);
+            }
             finals = tone_sandhi_.modifiedTone(word, pos, finals);
             std::tie(initials, finals) =
                 mergeErhua(initials, finals, word, pos);
