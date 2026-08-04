@@ -421,7 +421,10 @@ int main(int argc, char* argv[]) {
 
         while (true) {
             std::cout << "> ";
-            std::getline(std::cin, line);
+            if (!std::getline(std::cin, line)) {
+                std::cout << std::endl;
+                break;
+            }
 
             if (line.empty()) {
                 continue;
