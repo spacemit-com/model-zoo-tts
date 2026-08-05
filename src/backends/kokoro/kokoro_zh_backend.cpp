@@ -3,6 +3,8 @@
 
 #include "backends/kokoro/kokoro_zh_backend.hpp"
 
+#include "backends/kokoro/kokoro_frontend_data.hpp"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -29,25 +31,6 @@ namespace fs = std::filesystem;
 namespace tts {
 
 namespace {
-// misaki ZH_MAP: pinyin syllable/initial/final/tone -> bopomofo
-const std::unordered_map<std::string, std::string> ZH_MAP_DATA = {
-    {"b", "ㄅ"}, {"p", "ㄆ"}, {"m", "ㄇ"}, {"f", "ㄈ"}, {"d", "ㄉ"}, {"t", "ㄊ"}, {"n", "ㄋ"}, {"l", "ㄌ"},
-    {"g", "ㄍ"}, {"k", "ㄎ"}, {"h", "ㄏ"}, {"j", "ㄐ"}, {"q", "ㄑ"}, {"x", "ㄒ"}, {"zh", "ㄓ"}, {"ch", "ㄔ"},
-    {"sh", "ㄕ"}, {"r", "ㄖ"}, {"z", "ㄗ"}, {"c", "ㄘ"}, {"s", "ㄙ"},
-    {"a", "ㄚ"}, {"o", "ㄛ"}, {"e", "ㄜ"}, {"ie", "ㄝ"}, {"ai", "ㄞ"}, {"ei", "ㄟ"}, {"ao", "ㄠ"}, {"ou", "ㄡ"},
-    {"an", "ㄢ"}, {"en", "ㄣ"}, {"ang", "ㄤ"}, {"eng", "ㄥ"}, {"er", "ㄦ"},
-    {"i", "ㄧ"}, {"u", "ㄨ"}, {"v", "ㄩ"}, {"ii", "ㄭ"}, {"iii", "十"}, {"ve", "月"},
-    {"ia", "压"}, {"ian", "言"}, {"iang", "阳"}, {"iao", "要"}, {"in", "阴"}, {"ing", "应"}, {"iong", "用"},
-    {"iou", "又"}, {"ong", "中"}, {"ua", "穵"}, {"uai", "外"}, {"uan", "万"}, {"uang", "王"}, {"uei", "为"},
-    {"uen", "文"}, {"ueng", "瓮"}, {"uo", "我"}, {"van", "元"}, {"vn", "云"},
-    // Punctuation passthrough
-    {";", ";"}, {":", ";"}, {",", ","}, {".", "。"}, {"!", "!"}, {"?", "?"}, {"—", "—"}, {"…", "…"},
-    {"\"", "\""}, {"(", "("}, {")", ")"}, {" ", " "},
-    // Tone digits passthrough
-    {"0", "0"}, {"1", "1"}, {"2", "2"}, {"3", "3"}, {"4", "4"}, {"5", "5"},
-    {"R", "R"}  // erhua marker
-};
-
 // Split UTF-8 string into character vector
 std::vector<std::string> utf8CharsHelper(const std::string& s) {
     std::vector<std::string> out;
@@ -399,6 +382,13 @@ ErrorInfo KokoroZhBackend::initializeLanguageSpecific(const TtsConfig& config) {
 
         if (fs::exists(subdir_path + "/tokens.txt")) {
             token_to_id_ = text::readTokenToIdMap(subdir_path + "/tokens.txt");
+            // The generic whitespace-delimited reader cannot represent a
+            // literal-space token line ("  16"). Recover that entry from the
+            // tokenizer JSON when both package formats are available.
+            if (token_to_id_.count(" ") == 0 &&
+                fs::exists(subdir_path + "/tokenizer.json")) {
+                loadTokenizerJson(subdir_path + "/tokenizer.json");
+            }
         } else if (!loadTokenizerJson(subdir_path + "/tokenizer.json")) {
             throw std::runtime_error(
                 "Neither a valid tokens.txt nor tokenizer.json was found in " +
@@ -441,8 +431,6 @@ ErrorInfo KokoroZhBackend::initializeLanguageSpecific(const TtsConfig& config) {
                         << std::endl;
         }
         initializeToneSandhi();
-
-        zh_map_ = ZH_MAP_DATA;
 
         return ErrorInfo::ok();
     } catch (const std::exception& e) {
@@ -507,7 +495,6 @@ void KokoroZhBackend::shutdownLanguageSpecific() {
     lexicon_.clear();
     custom_zh_lexicon_.clear();
     token_to_id_.clear();
-    zh_map_.clear();
 }
 
 ErrorInfo KokoroZhBackend::updateLanguageLexicon(
@@ -555,6 +542,15 @@ void KokoroZhBackend::initializeJieba(const std::string& dict_dir) {
     std::string stop_words = dict_dir + "/stop_words.utf8";
     jieba_ = std::make_unique<cppjieba::Jieba>(
         dict_path, hmm_path, user_dict, idf_path, stop_words);
+    // pypinyin's load_phrases_dict applies before G2P in official Misaki.
+    // Register the same multi-character entries with Jieba so segmentation
+    // cannot split them before getInitialsFinals() sees the phrase override.
+    for (const auto& [phrase, _] :
+        kokoro_frontend_data::zhPhrasePinyin()) {
+        if (utf8CharsHelper(phrase).size() > 1) {
+            jieba_->InsertUserWord(phrase, 10000000);
+        }
+    }
 }
 
 void KokoroZhBackend::initializePinyin() {
@@ -669,32 +665,19 @@ std::vector<std::string> KokoroZhBackend::utf8Chars(const std::string& s) {
 
 std::pair<std::vector<std::string>, std::vector<std::string>>
 KokoroZhBackend::getInitialsFinals(const std::string& word) {
-    static const std::unordered_map<std::string, std::vector<std::string>>
-        kPhrasePinyin = {
-            {"开户行", {"kai1", "hu4", "hang2"}},
-            {"发卡行", {"fa4", "ka3", "hang2"}},
-            {"放款行", {"fang4", "kuan3", "hang2"}},
-            {"行号", {"hang2", "hao4"}},
-            {"各地", {"ge4", "di4"}},
-            {"借还款", {"jie4", "huan2", "kuan3"}},
-            {"时间为", {"shi2", "jian1", "wei2"}},
-            {"为准", {"wei2", "zhun3"}},
-            {"色差", {"se4", "cha1"}},
-            {"掺和", {"chan1", "huo5"}},
-            {"好吃", {"hao3", "chi1"}},
-        };
+    const auto& kPhrasePinyin = kokoro_frontend_data::zhPhrasePinyin();
 
     std::vector<std::string> raw_pinyins;
-    auto custom = lexicon_.find(word);
-    if (custom != lexicon_.end()) {
-        std::istringstream stream(custom->second);
-        for (std::string syllable; stream >> syllable;) {
-            raw_pinyins.push_back(syllable);
-        }
+    const auto phrase = kPhrasePinyin.find(word);
+    if (phrase != kPhrasePinyin.end()) {
+        raw_pinyins = phrase->second;
     } else {
-        auto phrase = kPhrasePinyin.find(word);
-        if (phrase != kPhrasePinyin.end()) {
-            raw_pinyins = phrase->second;
+        const auto cached = lexicon_.find(word);
+        if (cached != lexicon_.end()) {
+            std::istringstream stream(cached->second);
+            for (std::string syllable; stream >> syllable;) {
+                raw_pinyins.push_back(syllable);
+            }
         } else {
             auto converted = pinyin_->hanziToPinyin(
                 word, Pinyin::ManTone::Style::TONE3,
@@ -720,6 +703,13 @@ KokoroZhBackend::getInitialsFinals(const std::string& word) {
                 !converted.front().pinyin.empty()) {
                 raw_pinyins.push_back(converted.front().pinyin);
             }
+        }
+    }
+    if (raw_pinyins.size() == word_chars.size()) {
+        for (size_t i = 0; i < word_chars.size(); ++i) {
+            // Official Misaki forces 嗯 to n2 because pypinyin can otherwise
+            // return an empty initial and final for this interjection.
+            if (word_chars[i] == "嗯") raw_pinyins[i] = "n2";
         }
     }
 
@@ -783,18 +773,8 @@ KokoroZhBackend::mergeErhua(std::vector<std::string> initials,
     auto ch = utf8Chars(word);
     if (finals.size() != ch.size()) return {initials, finals};
 
-    static const std::unordered_set<std::string> kMustErhua = {
-        "小院儿", "胡同儿", "范儿", "老汉儿", "撒欢儿", "寻老礼儿",
-        "妥妥儿", "媳妇儿"
-    };
-    static const std::unordered_set<std::string> kNotErhua = {
-        "虐儿", "为儿", "护儿", "瞒儿", "救儿", "替儿", "有儿", "一儿",
-        "我儿", "俺儿", "妻儿", "拐儿", "聋儿", "乞儿", "患儿", "幼儿",
-        "孤儿", "婴儿", "婴幼儿", "连体儿", "脑瘫儿", "流浪儿", "体弱儿",
-        "混血儿", "蜜雪儿", "舫儿", "祖儿", "美儿", "应采儿", "可儿",
-        "侄儿", "孙儿", "侄孙儿", "女儿", "男儿", "红孩儿", "花儿",
-        "虫儿", "马儿", "鸟儿", "猪儿", "猫儿", "狗儿", "少儿"
-    };
+    const auto& kMustErhua = kokoro_frontend_data::mustErhuaWords();
+    const auto& kNotErhua = kokoro_frontend_data::notErhuaWords();
     bool not_erhua = kNotErhua.count(word) != 0;
     if (!not_erhua) {
         for (const auto& lexical : kNotErhua) {
@@ -839,8 +819,9 @@ KokoroZhBackend::mergeErhua(std::vector<std::string> initials,
 }
 
 std::string KokoroZhBackend::zhMap(const std::string& pinyin) {
-    auto it = zh_map_.find(pinyin);
-    return it != zh_map_.end() ? it->second : "❓";
+    const auto& map = kokoro_frontend_data::zhBopomofoMap();
+    const auto it = map.find(pinyin);
+    return it != map.end() ? it->second : "❓";
 }
 
 std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
@@ -947,7 +928,7 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
             // separator path, then emit the caller-provided tones unchanged.
             has_cjk = true;
         }
-        if ((pos == "x" || pos == "eng") && !has_cjk) {
+        if (!has_cjk) {
             const bool has_ascii_letter = std::any_of(
                 word.begin(), word.end(),
                 [](unsigned char c) { return std::isalpha(c) != 0; });
@@ -1074,6 +1055,26 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
     }
 
     const auto space = token_to_id_.find(" ");
+    if (space != token_to_id_.end()) {
+        std::unordered_set<int64_t> spaced_punctuation;
+        for (const std::string punctuation : {",", ".", "!", "?", ";"}) {
+            const auto token = token_to_id_.find(punctuation);
+            if (token != token_to_id_.end()) {
+                spaced_punctuation.insert(token->second);
+            }
+        }
+        std::vector<int64_t> with_punctuation_spacing;
+        with_punctuation_spacing.reserve(token_ids.size() + 4);
+        for (size_t i = 0; i < token_ids.size(); ++i) {
+            with_punctuation_spacing.push_back(token_ids[i]);
+            if (spaced_punctuation.count(token_ids[i]) != 0 &&
+                i + 1 < token_ids.size() &&
+                token_ids[i + 1] != space->second) {
+                with_punctuation_spacing.push_back(space->second);
+            }
+        }
+        token_ids = std::move(with_punctuation_spacing);
+    }
     while (space != token_to_id_.end() && token_ids.size() > 1 &&
             token_ids.back() == space->second) {
         token_ids.pop_back();

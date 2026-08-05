@@ -39,6 +39,7 @@ set(TTS_SOURCES
     src/backends/matcha/matcha_zh_en_backend.cpp
     src/backends/matcha/tts_model_downloader.cpp
     src/backends/kokoro/kokoro_backend.cpp
+    src/backends/kokoro/kokoro_frontend_data.cpp
     src/backends/kokoro/kokoro_en_backend.cpp
     src/backends/kokoro/kokoro_zh_backend.cpp
     src/backends/kokoro/tone_sandhi.cpp
@@ -308,6 +309,17 @@ if(BUILD_SIMPLE_DEMO)
     target_link_libraries(tts_file_demo PRIVATE tts)
     set_target_properties(tts_file_demo PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     install(TARGETS tts_file_demo RUNTIME DESTINATION bin)
+endif()
+
+option(BUILD_FRONTEND_TESTS "Build frontend-only Kokoro golden tests" OFF)
+if(BUILD_FRONTEND_TESTS)
+    add_executable(kokoro_en_misaki_golden_test
+        tests/kokoro_en_misaki_golden_test.cpp)
+    target_link_libraries(kokoro_en_misaki_golden_test PRIVATE tts)
+    target_include_directories(kokoro_en_misaki_golden_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    set_target_properties(kokoro_en_misaki_golden_test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
 endif()
 
 # 流式 TTS 演示程序 (需要 spacemit_audio / portaudio)

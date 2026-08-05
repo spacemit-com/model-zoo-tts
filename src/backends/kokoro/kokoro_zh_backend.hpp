@@ -96,7 +96,6 @@ private:
     std::unordered_map<std::string, std::string> custom_zh_lexicon_;
     int64_t separator_id_ = -1;                             // id of "/"
 
-    std::unordered_map<std::string, std::string> zh_map_;    // pinyin->bopomofo
 };
 
 }  // namespace tts
