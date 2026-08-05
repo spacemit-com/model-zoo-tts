@@ -50,6 +50,8 @@ protected:
     std::vector<int64_t> textToTokenIds(const std::string& text) override;
     std::vector<std::string> getChunkingUnits(
         const std::string& text) override;
+    std::string prepareTextForChunking(
+        const std::string& text) const override;
     std::string getModelSubdir() const override;
     std::string getModelFile() const override;
     std::string getLanguage() const override;

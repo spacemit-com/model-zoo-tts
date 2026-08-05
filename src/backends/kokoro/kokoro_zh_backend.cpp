@@ -229,38 +229,47 @@ std::string normalizeArabicNumbers(const std::string& text) {
 }
 
 std::string normalizeSemanticForms(std::string text) {
-    // Thousands separators.
-    text = std::regex_replace(text, std::regex("([0-9]),(?=[0-9]{3}(?:\\D|$))"), "$1");
-    // Fractions and percentages must be rewritten before the generic number FST.
-    text = std::regex_replace(
-        text, std::regex("([0-9]+)[/]([0-9]+)"), "$2分之$1");
-    text = std::regex_replace(
-        text, std::regex("([0-9]+(?:\\.[0-9]+)?)%"), "百分之$1");
-    // Clock time.
-    text = std::regex_replace(
-        text, std::regex("([0-9]{1,2}):([0-9]{2})"), "$1点$2分");
-    // Currency.
-    text = std::regex_replace(
-        text, std::regex("\\$([0-9]+(?:\\.[0-9]+)?)"), "$1美元");
-    text = std::regex_replace(
-        text, std::regex("(?:¥|￥)([0-9]+(?:\\.[0-9]+)?)"), "$1元");
-    // Temperature and common metric units.
-    text = std::regex_replace(
-        text, std::regex("([0-9]+(?:\\.[0-9]+)?)(?:℃|°C)"), "$1摄氏度");
-    text = std::regex_replace(
-        text, std::regex("([0-9]+(?:\\.[0-9]+)?)(?:℉|°F)"), "$1华氏度");
-    static const std::vector<std::pair<std::string, std::string>> kUnits = {
-        {"kg", "千克"}, {"km", "千米"}, {"cm", "厘米"}, {"mm", "毫米"},
-        {"ml", "毫升"}, {"ms", "毫秒"}, {"GB", "吉字节"}, {"MB", "兆字节"}
+    static const std::regex kThousands("([0-9]),(?=[0-9]{3}(?:\\D|$))");
+    static const std::regex kFraction("([0-9]+)[/]([0-9]+)");
+    static const std::regex kPercentage("([0-9]+(?:\\.[0-9]+)?)%");
+    static const std::regex kClockTime("([0-9]{1,2}):([0-9]{2})");
+    static const std::regex kDollar("\\$([0-9]+(?:\\.[0-9]+)?)");
+    static const std::regex kYuan("(?:¥|￥)([0-9]+(?:\\.[0-9]+)?)");
+    static const std::regex kCelsius(
+        "([0-9]+(?:\\.[0-9]+)?)(?:℃|°C)");
+    static const std::regex kFahrenheit(
+        "([0-9]+(?:\\.[0-9]+)?)(?:℉|°F)");
+    static const std::vector<std::pair<std::regex, std::string>> kUnits = {
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)kg\\b"), "$1千克"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)km\\b"), "$1千米"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)cm\\b"), "$1厘米"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)mm\\b"), "$1毫米"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)ml\\b"), "$1毫升"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)ms\\b"), "$1毫秒"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)GB\\b"), "$1吉字节"},
+        {std::regex("([0-9]+(?:\\.[0-9]+)?)MB\\b"), "$1兆字节"}
     };
+    static const std::regex kLeadingMinus(
+        "(^|[^A-Za-z0-9])[-]([0-9])");
+
+    // Thousands separators.
+    text = std::regex_replace(text, kThousands, "$1");
+    // Fractions and percentages must be rewritten before the generic number FST.
+    text = std::regex_replace(text, kFraction, "$2分之$1");
+    text = std::regex_replace(text, kPercentage, "百分之$1");
+    // Clock time.
+    text = std::regex_replace(text, kClockTime, "$1点$2分");
+    // Currency.
+    text = std::regex_replace(text, kDollar, "$1美元");
+    text = std::regex_replace(text, kYuan, "$1元");
+    // Temperature and common metric units.
+    text = std::regex_replace(text, kCelsius, "$1摄氏度");
+    text = std::regex_replace(text, kFahrenheit, "$1华氏度");
     for (const auto& unit : kUnits) {
-        text = std::regex_replace(
-            text, std::regex("([0-9]+(?:\\.[0-9]+)?)" + unit.first + "\\b"),
-            "$1" + unit.second);
+        text = std::regex_replace(text, unit.first, unit.second);
     }
     // A leading minus is a sign; hyphens in identifiers such as GPT-4 stay.
-    text = std::regex_replace(
-        text, std::regex("(^|[^A-Za-z0-9])[-]([0-9])"), "$1负$2");
+    text = std::regex_replace(text, kLeadingMinus, "$1负$2");
     return text;
 }
 
@@ -593,34 +602,63 @@ std::vector<std::string> KokoroZhBackend::getChunkingUnits(
         return KokoroBackend::getChunkingUnits(text);
     }
 
-    std::vector<std::string> words;
-    jieba_->Cut(text, words, true);
-    if (words.empty()) {
-        return KokoroBackend::getChunkingUnits(text);
-    }
-
     std::vector<std::string> units;
-    size_t offset = 0;
-    for (const auto& word : words) {
-        if (word.empty()) {
-            continue;
+    const auto appendJiebaUnits = [&](const std::string& segment) {
+        if (segment.empty()) {
+            return true;
         }
-        const size_t position = text.find(word, offset);
-        if (position == std::string::npos) {
+        std::vector<std::string> words;
+        jieba_->Cut(segment, words, true);
+        if (words.empty()) {
+            const auto fallback = KokoroBackend::getChunkingUnits(segment);
+            units.insert(units.end(), fallback.begin(), fallback.end());
+            return true;
+        }
+
+        size_t offset = 0;
+        for (const auto& word : words) {
+            if (word.empty()) {
+                continue;
+            }
+            const size_t position = segment.find(word, offset);
+            if (position == std::string::npos) {
+                return false;
+            }
+            if (position > offset) {
+                const auto gap = KokoroBackend::getChunkingUnits(
+                    segment.substr(offset, position - offset));
+                units.insert(units.end(), gap.begin(), gap.end());
+            }
+            units.push_back(word);
+            offset = position + word.size();
+        }
+        if (offset < segment.size()) {
+            const auto tail =
+                KokoroBackend::getChunkingUnits(segment.substr(offset));
+            units.insert(units.end(), tail.begin(), tail.end());
+        }
+        return true;
+    };
+
+    // Semantic forms must remain atomic chunking units. Splitting a currency
+    // sign, decimal, fraction, or unit suffix from its number changes how the
+    // per-chunk frontend normalizes and pronounces it.
+    static const std::regex kSemanticChunkAtom(
+        "(?:[0-9]{1,2}点[0-9]{2}分|百分之[0-9]+(?:\\.[0-9]+)?|"
+        "[0-9]+分之[0-9]+|(?:负)?[0-9]+(?:\\.[0-9]+)?(?:美元|元|"
+        "摄氏度|华氏度|千克|千米|厘米|毫米|毫升|毫秒|吉字节|兆字节))");
+    size_t offset = 0;
+    for (std::sregex_iterator it(text.begin(), text.end(), kSemanticChunkAtom),
+            end; it != end; ++it) {
+        const size_t position = static_cast<size_t>(it->position());
+        if (!appendJiebaUnits(text.substr(offset, position - offset))) {
             return KokoroBackend::getChunkingUnits(text);
         }
-        if (position > offset) {
-            const auto gap_units = KokoroBackend::getChunkingUnits(
-                text.substr(offset, position - offset));
-            units.insert(units.end(), gap_units.begin(), gap_units.end());
-        }
-        units.push_back(word);
-        offset = position + word.size();
+        units.push_back(it->str());
+        offset = position + static_cast<size_t>(it->length());
     }
-    if (offset < text.size()) {
-        const auto tail_units =
-            KokoroBackend::getChunkingUnits(text.substr(offset));
-        units.insert(units.end(), tail_units.begin(), tail_units.end());
+    if (!appendJiebaUnits(text.substr(offset))) {
+        return KokoroBackend::getChunkingUnits(text);
     }
     return units;
 }
@@ -757,7 +795,6 @@ KokoroZhBackend::mergeErhua(std::vector<std::string> initials,
         "侄儿", "孙儿", "侄孙儿", "女儿", "男儿", "红孩儿", "花儿",
         "虫儿", "马儿", "鸟儿", "猪儿", "猫儿", "狗儿", "少儿"
     };
-
     bool not_erhua = kNotErhua.count(word) != 0;
     if (!not_erhua) {
         for (const auto& lexical : kNotErhua) {
@@ -878,12 +915,21 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
     token_ids.push_back(0);  // BOS
     bool first_word = true;  // reset after punctuation: no "/" right after punc
     bool previous_numeric_expression = false;
-    for (const auto& [word, pos] : seg_ts) {
+    const auto isNumericExpressionChar = [](const std::string& ch) {
+        static const std::string kChars =
+            "零〇一二三四五六七八九十百千万亿年月日号点时分秒";
+        return kChars.find(ch) != std::string::npos;
+    };
+    for (size_t seg_index = 0; seg_index < seg_ts.size(); ++seg_index) {
+        const auto& [word, pos] = seg_ts[seg_index];
         if (word.empty()) continue;
         if (word == " ") {
             // Whitespace token (from map_punctuation) -> emit " " (id 16)
             auto it = token_to_id_.find(" ");
-            if (it != token_to_id_.end()) token_ids.push_back(it->second);
+            if (it != token_to_id_.end() &&
+                (token_ids.empty() || token_ids.back() != it->second)) {
+                token_ids.push_back(it->second);
+            }
             previous_numeric_expression = false;
             continue;
         }
@@ -938,16 +984,11 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
             continue;
         }
 
-        const auto is_numeric_expression_char = [](const std::string& ch) {
-            static const std::string kChars =
-                "零〇一二三四五六七八九十百千万亿年月日号点时分秒";
-            return kChars.find(ch) != std::string::npos;
-        };
         const bool current_numeric_expression =
             !word_chars.empty() &&
             std::all_of(
                 word_chars.begin(), word_chars.end(),
-                is_numeric_expression_char);
+                isNumericExpressionChar);
 
         // Insert "/" separator only between consecutive Chinese words.
         if (!first_word && separator_id_ >= 0 &&
@@ -962,7 +1003,20 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
         if (custom != custom_placeholders.end()) {
             parsePinyinPronunciation(custom->second, initials, finals);
         } else {
-            std::tie(initials, finals) = getInitialsFinals(word);
+            bool weight_context = false;
+            if (word == "重" && seg_index + 1 < seg_ts.size()) {
+                const auto next_chars = utf8Chars(seg_ts[seg_index + 1].first);
+                weight_context = !next_chars.empty() &&
+                    std::all_of(
+                        next_chars.begin(), next_chars.end(),
+                        isNumericExpressionChar);
+            }
+            if (weight_context) {
+                initials = {"zh"};
+                finals = {"ong4"};
+            } else {
+                std::tie(initials, finals) = getInitialsFinals(word);
+            }
             finals = tone_sandhi_.modifiedTone(word, pos, finals);
             std::tie(initials, finals) =
                 mergeErhua(initials, finals, word, pos);
@@ -1019,8 +1073,18 @@ std::vector<int64_t> KokoroZhBackend::textToTokenIds(const std::string& text) {
         }
     }
 
+    const auto space = token_to_id_.find(" ");
+    while (space != token_to_id_.end() && token_ids.size() > 1 &&
+            token_ids.back() == space->second) {
+        token_ids.pop_back();
+    }
     token_ids.push_back(0);  // EOS
     return token_ids.size() <= 2 ? std::vector<int64_t>{} : token_ids;
+}
+
+std::string KokoroZhBackend::prepareTextForChunking(
+        const std::string& text) const {
+    return normalizeSemanticForms(text);
 }
 
 }  // namespace tts
