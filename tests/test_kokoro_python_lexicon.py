@@ -86,7 +86,7 @@ def _verify_chinese(model_root: Path, work_dir: Path) -> None:
             "KOKORO_DUMP_TOKENS",
             work_dir / "zh-default.ids",
         )
-        engine.update_lexicon([{"word": "为你", "phoneme": "wei2 ni3"}])
+        engine.update_lexicon([{"word": "为你", "phoneme": "wei1 ni3"}])
         custom_zh = _synthesize_dump(
             engine,
             "为你",

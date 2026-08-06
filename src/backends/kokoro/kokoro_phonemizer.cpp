@@ -113,6 +113,34 @@ std::string cardinalToWords(const std::string& digits) {
     return out;
 }
 
+// Convert the final component of a cardinal phrase to its ordinal form.
+// This matches num2words' compound-ordinal structure: 101 -> "one hundred
+// first", 112 -> "one hundred twelfth", and 120 -> "one hundred twentieth".
+std::string ordinalToWords(const std::string& digits) {
+    std::string words = cardinalToWords(digits);
+    if (words.empty()) return "";
+
+    static const std::unordered_map<std::string, std::string> kIrregular = {
+        {"one", "first"}, {"two", "second"}, {"three", "third"},
+        {"five", "fifth"}, {"eight", "eighth"}, {"nine", "ninth"},
+        {"twelve", "twelfth"},
+        {"twenty", "twentieth"}, {"thirty", "thirtieth"},
+        {"forty", "fortieth"}, {"fifty", "fiftieth"},
+        {"sixty", "sixtieth"}, {"seventy", "seventieth"},
+        {"eighty", "eightieth"}, {"ninety", "ninetieth"},
+    };
+
+    const size_t separator = words.rfind(' ');
+    const size_t final_begin = separator == std::string::npos
+        ? 0 : separator + 1;
+    const std::string final_word = words.substr(final_begin);
+    const auto irregular = kIrregular.find(final_word);
+    const std::string ordinal = irregular != kIrregular.end()
+        ? irregular->second : final_word + "th";
+    words.replace(final_begin, std::string::npos, ordinal);
+    return words;
+}
+
 // 4-digit year reading, e.g. 2024 -> "twenty twenty-four", 1900 -> "nineteen
 // hundred", 2000 -> "two thousand", 2005 -> "two thousand five".
 std::string yearToWords(const std::string& digits) {
@@ -877,32 +905,8 @@ std::string KokoroPhonemizer::numberToIPA(const std::string& digits, bool as_yea
 }
 
 std::string KokoroPhonemizer::ordinalToIPA(const std::string& digits) const {
-    if (digits.empty()) return "";
-    long long value = 0;
-    for (const char digit : digits) {
-        if (!std::isdigit(static_cast<unsigned char>(digit))) return "";
-        value = value * 10 + (digit - '0');
-    }
-    static const std::unordered_map<int, std::string> kIrregular = {
-        {1, "first"}, {2, "second"}, {3, "third"}, {4, "fourth"},
-        {5, "fifth"}, {6, "sixth"}, {7, "seventh"}, {8, "eighth"},
-        {9, "ninth"}, {10, "tenth"}, {11, "eleventh"}, {12, "twelfth"},
-        {13, "thirteenth"}, {14, "fourteenth"}, {15, "fifteenth"},
-        {16, "sixteenth"}, {17, "seventeenth"}, {18, "eighteenth"},
-        {19, "nineteenth"}, {20, "twentieth"}, {30, "thirtieth"},
-        {40, "fortieth"}, {50, "fiftieth"}, {60, "sixtieth"},
-        {70, "seventieth"}, {80, "eightieth"}, {90, "ninetieth"},
-    };
-    std::string words;
-    const auto exact = kIrregular.find(static_cast<int>(value));
-    if (exact != kIrregular.end()) {
-        words = exact->second;
-    } else if (value > 20 && value < 100 && value % 10 != 0) {
-        words = cardinalToWords(std::to_string(value - value % 10)) + " " +
-            kIrregular.at(static_cast<int>(value % 10));
-    } else {
-        words = cardinalToWords(std::to_string(value)) + "th";
-    }
+    const std::string words = ordinalToWords(digits);
+    if (words.empty()) return "";
 
     std::string ipa;
     std::istringstream stream(words);

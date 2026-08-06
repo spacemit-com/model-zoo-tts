@@ -668,16 +668,16 @@ KokoroZhBackend::getInitialsFinals(const std::string& word) {
     const auto& kPhrasePinyin = kokoro_frontend_data::zhPhrasePinyin();
 
     std::vector<std::string> raw_pinyins;
-    const auto phrase = kPhrasePinyin.find(word);
-    if (phrase != kPhrasePinyin.end()) {
-        raw_pinyins = phrase->second;
+    const auto cached = lexicon_.find(word);
+    if (cached != lexicon_.end()) {
+        std::istringstream stream(cached->second);
+        for (std::string syllable; stream >> syllable;) {
+            raw_pinyins.push_back(syllable);
+        }
     } else {
-        const auto cached = lexicon_.find(word);
-        if (cached != lexicon_.end()) {
-            std::istringstream stream(cached->second);
-            for (std::string syllable; stream >> syllable;) {
-                raw_pinyins.push_back(syllable);
-            }
+        const auto phrase = kPhrasePinyin.find(word);
+        if (phrase != kPhrasePinyin.end()) {
+            raw_pinyins = phrase->second;
         } else {
             auto converted = pinyin_->hanziToPinyin(
                 word, Pinyin::ManTone::Style::TONE3,

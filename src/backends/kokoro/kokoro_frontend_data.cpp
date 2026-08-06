@@ -104,7 +104,8 @@ const StringMap& zhBopomofoMap() {
 
 const std::unordered_map<std::string, std::vector<std::string>>&
 zhPhrasePinyin() {
-    // Misaki v1.1 zh_frontend.py phrases_dict.
+    // Misaki v1.1 zh_frontend.py phrases_dict plus documented compatibility
+    // corrections for differences in the C++ pinyin backend.
     static const std::unordered_map<std::string, std::vector<std::string>> kMap = {
         {"开户行", {"kai1", "hu4", "hang2"}},
         {"发卡行", {"fa4", "ka3", "hang2"}},
@@ -117,6 +118,9 @@ zhPhrasePinyin() {
         {"嗲", {"dia3"}}, {"呗", {"bei5"}}, {"不", {"bu4"}},
         {"咯", {"zuo5"}}, {"咧", {"lei5"}},
         {"掺和", {"chan1", "huo5"}}, {"地", {"de5"}},
+        // cpp-pinyin can return hao4 here, while official Misaki produces
+        // hao3 chi1. Preserve the pre-refactor correction and golden output.
+        {"好吃", {"hao3", "chi1"}},
     };
     return kMap;
 }
