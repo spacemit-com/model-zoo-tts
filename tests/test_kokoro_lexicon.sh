@@ -78,7 +78,7 @@ HOME="${test_home}" \
 KOKORO_DUMP_TOKENS="${work_dir}/zh-custom.ids" \
 SPACEMIT_TTS_WARMUP_RUNS=0 \
 "${demo}" --provider cpu -l kokoro:zh -p "为你" \
-    --lexicon "为你:wei2 ni3" \
+    --lexicon "为你:wei1 ni3" \
     -o "${work_dir}/zh-custom.wav" >/dev/null 2>&1 || true
 
 if [[ ! -s "${work_dir}/zh-custom.ids" ]]; then
@@ -113,10 +113,10 @@ else:
 ids = [int(value) for value in ids_path.read_text().split()]
 actual = "".join(id_to_token[token_id] for token_id in ids[1:-1])
 # Use a deliberately non-default tone to prove the custom entry is applied.
-if actual != "为2ㄋㄧ3":
+if actual != "为1ㄋㄧ3":
     raise SystemExit(
         "Kokoro Chinese custom lexicon mismatch: "
-        f"expected 为2ㄋㄧ3, got {actual}")
+        f"expected 为1ㄋㄧ3, got {actual}")
 PY
 
 echo "Kokoro custom lexicon: English, mixed-English and Chinese passed."

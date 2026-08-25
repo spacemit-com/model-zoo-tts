@@ -112,6 +112,12 @@ private:
     /// @brief Convert a digit run to IPA via English number words + lexicon.
     std::string numberToIPA(const std::string& digits, bool as_year) const;
 
+    /// @brief Convert an English ordinal such as 21st to IPA.
+    std::string ordinalToIPA(const std::string& digits) const;
+
+    /// @brief Convert a dollar amount such as 12.50 to IPA.
+    std::string dollarAmountToIPA(const std::string& amount) const;
+
     /// @brief Lexicon helper: raw gold/silver lookup with dict-value DEFAULT.
     bool lexiconGet(
         const std::string& word,
@@ -153,12 +159,6 @@ private:
     // Whether espeak-ng is available for English processing
     bool espeak_available_ = false;
 
-    // Pinyin -> IPA mapping tables
-    static const std::unordered_map<std::string, std::string> initial_to_ipa_;
-    static const std::unordered_map<std::string, std::string> final_to_ipa_;
-
-    // Ordered initials list for longest-match parsing
-    static const std::vector<std::string> initials_ordered_;
 };
 
 }  // namespace tts
