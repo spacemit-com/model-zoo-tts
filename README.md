@@ -29,12 +29,12 @@
 ### 2.1. 安装依赖
 
 - **编译环境**：CMake ≥ 3.16，C++17 编译器（GCC/Clang/MSVC）。
-- **必选**：libsndfile、libfftw3、espeak-ng；ONNX Runtime（需手动安装或指定路径）。
+- **必选**：libsndfile、libfftw3、espeak-ng、libcurl；ONNX Runtime（需手动安装或指定路径）。
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y build-essential cmake \
-  libsndfile1-dev libfftw3-dev espeak-ng
+  libsndfile1-dev libfftw3-dev espeak-ng libcurl4-openssl-dev
 ```
 
 **指定 ONNX Runtime 路径（可选）：**
@@ -50,22 +50,40 @@ cmake -B build -S . \
 
 ### 2.2. 下载模型
 
-所有 backend 都使用 `~/.cache/models/tts/` 下的独立标准缓存目录，首次运行可自动下载：
+所有 backend 使用 `~/.cache/models/tts/` 下的独立缓存目录，首次运行自动下载。手动预置时按下列命令操作。
 
-- Matcha：`~/.cache/models/tts/matcha-tts/`
-- Kokoro：`~/.cache/models/tts/kokoro-tts/`
+**模型源**：进迭时空镜像 <https://archive.spacemit.com/spacemit-ai/model_zoo/tts/>
 
-**模型源：**
-- **进迭时空镜像（推荐）**：<https://archive.spacemit.com/spacemit-ai/model_zoo/tts/>  
-  提供 TTS 模型压缩包，下载后解压到默认目录即可，例如：
-  ```bash
-  mkdir -p ~/.cache/models/tts
-  cd ~/.cache/models/tts
-  wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/matcha-tts.tar.gz
-  tar -xzf matcha-tts.tar.gz
-  ```
-  解压后需得到与组件预期一致的目录结构（具体以各后端文档为准）。
-- **其他渠道**：从各后端官方或内部渠道获取模型文件，解压/拷贝至上述目录。
+#### Matcha
+
+```bash
+mkdir -p ~/.cache/models/tts/matcha-tts && cd ~/.cache/models/tts/matcha-tts
+
+wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/matcha-tts/matcha-icefall-zh-baker.tar.gz
+wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/matcha-tts/matcha-icefall-en_US-ljspeech.tar.gz
+wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/matcha-tts/matcha-icefall-zh-en.tar.gz
+tar -xzf matcha-icefall-zh-baker.tar.gz
+tar -xzf matcha-icefall-en_US-ljspeech.tar.gz
+tar -xzf matcha-icefall-zh-en.tar.gz
+rm -f *.tar.gz
+
+wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/vocoder/vocos-22khz-univ.q.onnx
+wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/vocoder/vocos-16khz-univ.q.onnx
+```
+
+压缩包内已含顶层目录，直接解压到 `matcha-tts/` 即可。`vocos-22khz-univ.q.onnx` 供 `matcha:zh` / `matcha:en`，`vocos-16khz-univ.q.onnx` 供 `matcha:zh-en`。
+
+#### Kokoro
+
+```bash
+mkdir -p ~/.cache/models/tts/kokoro-tts && cd ~/.cache/models/tts/kokoro-tts
+
+wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/kokoro/kokoro-v1.0-en.tar.gz
+wget https://archive.spacemit.com/spacemit-ai/model_zoo/tts/kokoro/kokoro-v1.1-zh.tar.gz
+tar -xzf kokoro-v1.0-en.tar.gz
+tar -xzf kokoro-v1.1-zh.tar.gz
+rm -f *.tar.gz
+```
 
 ### 2.3. 测试
 
