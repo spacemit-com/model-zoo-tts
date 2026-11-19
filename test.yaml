@@ -18,3 +18,12 @@ tests:
     workdir: sdk
     command: |
       bash components/model_zoo/tts/tests/test_invalid_input_error_path.sh
+
+  - name: tts-python-file-demo-errors
+    description: Runs the Python file demo against a fake spacemit_tts and verifies it exits non-zero without the success banner when any synthesis or save fails, and writes every file when none fails.
+    category: functional
+    scopes: [pr]
+    timeout_s: 120
+    workdir: sdk
+    command: |
+      python3 components/model_zoo/tts/tests/test_python_file_demo_errors.py
