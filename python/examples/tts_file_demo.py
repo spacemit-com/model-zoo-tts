@@ -5,7 +5,27 @@ Simple TTS Demo
 Demonstrates basic text-to-speech synthesis.
 """
 
+import sys
+
 import spacemit_tts
+
+
+def check_synthesis(result):
+    """Return result if synthesis succeeded, otherwise raise.
+
+    Use is_success rather than truth value: bool(result) only says whether
+    the result holds audio.
+    """
+    if not result.is_success:
+        raise RuntimeError(f"Synthesis failed: {result.message}")
+    return result
+
+
+def save_audio(result, output_file):
+    """Save result to output_file, raising if the file could not be written."""
+    if not result.save(output_file):
+        raise RuntimeError(f"Failed to save audio to {output_file}")
+    print(f"  Saved to: {output_file}")
 
 
 def main():
@@ -26,18 +46,12 @@ def main():
     print(f"Synthesizing: {text}")
     result = engine.synthesize(text)
 
-    if result:
-        print("✓ Success!")
-        print(f"  Duration: {result.duration_ms} ms")
-        print(f"  RTF: {result.rtf:.3f}")
-        print(f"  Audio samples: {len(result.audio_float)}")
-
-        # Save to file
-        output_file = "output_chinese.wav"
-        result.save(output_file)
-        print(f"  Saved to: {output_file}")
-    else:
-        print(f"✗ Failed: {result.message}")
+    check_synthesis(result)
+    print("✓ Success!")
+    print(f"  Duration: {result.duration_ms} ms")
+    print(f"  RTF: {result.rtf:.3f}")
+    print(f"  Audio samples: {len(result.audio_float)}")
+    save_audio(result, "output_chinese.wav")
     print()
 
     # English synthesis
@@ -51,16 +65,11 @@ def main():
     print(f"Synthesizing: {text_en}")
     result_en = engine_en.synthesize(text_en)
 
-    if result_en:
-        print("✓ Success!")
-        print(f"  Duration: {result_en.duration_ms} ms")
-        print(f"  RTF: {result_en.rtf:.3f}")
-
-        output_file = "output_english.wav"
-        result_en.save(output_file)
-        print(f"  Saved to: {output_file}")
-    else:
-        print(f"✗ Failed: {result_en.message}")
+    check_synthesis(result_en)
+    print("✓ Success!")
+    print(f"  Duration: {result_en.duration_ms} ms")
+    print(f"  RTF: {result_en.rtf:.3f}")
+    save_audio(result_en, "output_english.wav")
     print()
 
     # Bilingual synthesis
@@ -74,16 +83,11 @@ def main():
     print(f"Synthesizing: {text_bilingual}")
     result_bilingual = engine_bilingual.synthesize(text_bilingual)
 
-    if result_bilingual:
-        print("✓ Success!")
-        print(f"  Duration: {result_bilingual.duration_ms} ms")
-        print(f"  RTF: {result_bilingual.rtf:.3f}")
-
-        output_file = "output_bilingual.wav"
-        result_bilingual.save(output_file)
-        print(f"  Saved to: {output_file}")
-    else:
-        print(f"✗ Failed: {result_bilingual.message}")
+    check_synthesis(result_bilingual)
+    print("✓ Success!")
+    print(f"  Duration: {result_bilingual.duration_ms} ms")
+    print(f"  RTF: {result_bilingual.rtf:.3f}")
+    save_audio(result_bilingual, "output_bilingual.wav")
     print()
 
     # Kokoro synthesis (24000Hz)
@@ -98,34 +102,30 @@ def main():
     print(f"Synthesizing: {text_kokoro}")
     result_kokoro = engine_kokoro.synthesize(text_kokoro)
 
-    if result_kokoro:
-        print("✓ Success!")
-        print(f"  Duration: {result_kokoro.duration_ms} ms")
-        print(f"  RTF: {result_kokoro.rtf:.3f}")
-
-        output_file = "output_kokoro.wav"
-        result_kokoro.save(output_file)
-        print(f"  Saved to: {output_file}")
-    else:
-        print(f"✗ Failed: {result_kokoro.message}")
+    check_synthesis(result_kokoro)
+    print("✓ Success!")
+    print(f"  Duration: {result_kokoro.duration_ms} ms")
+    print(f"  RTF: {result_kokoro.rtf:.3f}")
+    save_audio(result_kokoro, "output_kokoro.wav")
     print()
 
     # Adjust speed
     print("Synthesizing with different speeds...")
     engine.set_speed(0.8)
-    result_slow = engine.synthesize("这是慢速语音。")
-    result_slow.save("output_slow.wav")
+    result_slow = check_synthesis(engine.synthesize("这是慢速语音。"))
+    save_audio(result_slow, "output_slow.wav")
     print(f"  Slow (0.8x): {result_slow.duration_ms} ms")
 
     engine.set_speed(1.5)
-    result_fast = engine.synthesize("这是快速语音。")
-    result_fast.save("output_fast.wav")
+    result_fast = check_synthesis(engine.synthesize("这是快速语音。"))
+    save_audio(result_fast, "output_fast.wav")
     print(f"  Fast (1.5x): {result_fast.duration_ms} ms")
     print()
 
     # Quick synthesis using utility function
     print("Quick synthesis using utility function...")
-    spacemit_tts.synthesize_to_file("这是快速合成", "output_quick.wav")
+    if not spacemit_tts.synthesize_to_file("这是快速合成", "output_quick.wav"):
+        raise RuntimeError("Quick synthesis to output_quick.wav failed")
     print("  Saved to: output_quick.wav")
     print()
 
@@ -135,4 +135,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as error:
+        print(f"✗ {error}", file=sys.stderr)
+        sys.exit(1)
